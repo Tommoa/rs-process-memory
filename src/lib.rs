@@ -1,0 +1,284 @@
+/// This crate is based off read-process-memory by luser. I have added the ability
+/// to write to process memory as well (but only for Windows so far) so that it can
+/// be used as a general purpose memory accesser
+#[macro_use] extern crate log;
+extern crate libc;
+
+use std::{io};
+
+pub trait CopyAddress {
+    fn copy_address(&self, addr: usize, buf: &mut [u8]) -> io::Result<()>;
+}
+
+pub trait PutAddress {
+    fn put_address(&self, addr: usize, buf: &[u8]) -> io::Result<()>;
+    fn get_offset(&self, offsets: &[usize]) -> usize;
+}
+
+pub use platform::Pid;
+pub use platform::ProcessHandle;
+
+pub trait TryIntoProcessHandle {
+    fn try_into_process_handle(&self) -> io::Result<ProcessHandle>;
+}
+
+impl TryIntoProcessHandle for ProcessHandle {
+    fn try_into_process_handle(&self) -> io::Result<platform::ProcessHandle> {
+        Ok(*self)
+    }
+}
+
+#[cfg(target_os="linux")]
+mod platform {
+    use libc::{pid_t, c_void, iovec, process_vm_readv};
+    use std::io;
+    use std::process::Child;
+
+    use super::{CopyAddress, TryIntoProcessHandle};
+
+    /// On Linux a `Pid` is just a `libc::pid_t`.
+    pub type Pid = pid_t;
+    /// On Linux a `ProcessHandle` is just a `libc::pid_t`.
+    pub type ProcessHandle = pid_t;
+
+    /// A `process::Child` always has a pid, which is all we need on Linux.
+    impl TryIntoProcessHandle for Child {
+        fn try_into_process_handle(&self) -> io::Result<ProcessHandle> {
+            Ok(self.id() as pid_t)
+        }
+    }
+
+    impl CopyAddress for ProcessHandle {
+        fn copy_address(&self, addr: usize, buf: &mut [u8]) -> io::Result<()> {
+            let local_iov = iovec {
+                iov_base: buf.as_mut_ptr() as *mut c_void,
+                iov_len: buf.len(),
+            };
+            let remote_iov = iovec {
+                iov_base: addr as *mut c_void,
+                iov_len: buf.len(),
+            };
+            let result = unsafe {
+                process_vm_readv(*self, &local_iov, 1, &remote_iov, 1, 0)
+            };
+            if result == -1 {
+                Err(io::Error::last_os_error())
+            } else {
+                Ok(())
+            }
+        }
+    }
+}
+
+#[cfg(target_os="macos")]
+mod platform {
+    extern crate mach;
+
+    use libc::{pid_t, c_int};
+    use self::mach::kern_return::{kern_return_t, KERN_SUCCESS};
+    use self::mach::port::{mach_port_t, mach_port_name_t, MACH_PORT_NULL};
+    use self::mach::vm_types::{mach_vm_address_t, mach_vm_size_t};
+    use self::mach::message::{mach_msg_type_number_t};
+    use std::io;
+    use std::process::Child;
+    use std::ptr;
+    use std::slice;
+
+    use super::{CopyAddress, TryIntoProcessHandle};
+
+    #[allow(non_camel_case_types)] type vm_map_t = mach_port_t;
+    #[allow(non_camel_case_types)] type vm_address_t = mach_vm_address_t;
+    #[allow(non_camel_case_types)] type vm_size_t = mach_vm_size_t;
+
+    /// On OS X a `Pid` is just a `libc::pid_t`.
+    pub type Pid = pid_t;
+    /// On OS X a `ProcessHandle` is a mach port.
+    pub type ProcessHandle = mach_port_name_t;
+
+    extern "C" {
+        fn vm_read(target_task: vm_map_t, address: vm_address_t, size: vm_size_t, data: &*mut u8, data_size: *mut mach_msg_type_number_t) -> kern_return_t;
+    }
+
+    /// A small wrapper around `task_for_pid`, which taskes a pid returns the mach port representing its task.
+    fn task_for_pid(pid: pid_t) -> io::Result<mach_port_name_t> {
+        let mut task: mach_port_name_t = MACH_PORT_NULL;
+
+        unsafe {
+            let result = mach::traps::task_for_pid(mach::traps::mach_task_self(), pid as c_int, &mut task);
+            if result != KERN_SUCCESS {
+                return Err(io::Error::last_os_error())
+            }
+        }
+
+        Ok(task)
+    }
+
+    /// `Pid` can be turned into a `ProcessHandle` with `task_for_pid`.
+    impl TryIntoProcessHandle for Pid {
+        fn try_into_process_handle(&self) -> io::Result<ProcessHandle> {
+            task_for_pid(*self)
+        }
+    }
+
+    /// This `TryIntoProcessHandle` impl simply calls the `TryIntoProcessHandle` impl for `Pid`.
+    ///
+    /// Unfortunately spawning a process on OS X does not hand back a mach
+    /// port by default (you have to jump through several hoops to get at it),
+    /// so there's no simple implementation of `TryIntoProcessHandle` for
+    /// `std::process::Child`. This implementation is just provided for symmetry
+    /// with other platforms to make writing cross-platform code easier.
+    ///
+    /// Ideally we would provide an implementation of `std::process::Command::spawn`
+    /// that jumped through those hoops and provided the task port.
+    impl TryIntoProcessHandle for Child {
+        fn try_into_process_handle(&self) -> io::Result<ProcessHandle> {
+            self.id().try_into_process_handle()
+        }
+    }
+
+    /// Use `vm_read` to read memory from another process on OS X.
+    impl CopyAddress for ProcessHandle {
+        fn copy_address(&self, addr: usize, buf: &mut [u8]) -> io::Result<()> {
+            let page_addr      = (addr as i64 & (-4096)) as mach_vm_address_t;
+	    let last_page_addr = ((addr as i64 + buf.len() as i64 + 4095) & (-4096)) as mach_vm_address_t;
+            let page_size      = last_page_addr as usize - page_addr as usize;
+
+            let read_ptr: *mut u8 = ptr::null_mut();
+            let mut read_len: mach_msg_type_number_t = 0;
+
+            let result = unsafe {
+                vm_read(*self, page_addr as u64, page_size as vm_size_t, &read_ptr, &mut read_len)
+            };
+
+            if result != KERN_SUCCESS {
+                return Err(io::Error::last_os_error())
+            }
+
+            if read_len != page_size as u32 {
+                panic!("Mismatched read sizes for `vm_read` (expected {}, got {})", page_size, read_len)
+            }
+
+            let read_buf = unsafe { slice::from_raw_parts(read_ptr, read_len as usize) };
+
+            let offset = addr - page_addr as usize;
+            let len = buf.len();
+            buf.copy_from_slice(&read_buf[offset..(offset + len)]);
+
+            Ok(())
+        }
+    }
+}
+
+#[cfg(windows)]
+mod platform {
+    extern crate winapi;
+    extern crate kernel32;
+
+    use std::io;
+    use std::mem;
+    use std::os::windows::io::{AsRawHandle, RawHandle};
+    use std::process::Child;
+    use std::ptr;
+
+    use super::{CopyAddress, TryIntoProcessHandle, PutAddress};
+
+    /// On Windows a `Pid` is a `DWORD`.
+    pub type Pid = winapi::DWORD;
+    /// On Windows a `ProcessHandle` is a `HANDLE`.
+    pub type ProcessHandle = RawHandle;
+
+    /// A `Pid` can be turned into a `ProcessHandle` with `OpenProcess`.
+    impl TryIntoProcessHandle for winapi::DWORD {
+        fn try_into_process_handle(&self) -> io::Result<ProcessHandle> {
+            let handle = unsafe { kernel32::OpenProcess(winapi::winnt::PROCESS_VM_READ, winapi::FALSE, *self) };
+            if handle == (0 as RawHandle) {
+                Err(io::Error::last_os_error())
+            } else {
+                Ok(handle)
+            }
+        }
+    }
+
+    /// A `std::process::Child` has a `HANDLE` from calling `CreateProcess`.
+    impl TryIntoProcessHandle for Child {
+        fn try_into_process_handle(&self) -> io::Result<ProcessHandle> {
+            Ok(self.as_raw_handle())
+        }
+    }
+
+    /// Use `ReadProcessMemory` to read memory from another process on Windows.
+    impl CopyAddress for ProcessHandle {
+        fn copy_address(&self, addr: usize, buf: &mut [u8]) -> io::Result<()> {
+            if buf.len() == 0 {
+                return Ok(());
+            }
+
+            if unsafe { kernel32::ReadProcessMemory(*self,
+                                                    addr as winapi::LPVOID,
+                                                    buf.as_mut_ptr() as winapi::LPVOID,
+                                                    mem::size_of_val(buf) as winapi::SIZE_T,
+                                                    ptr::null_mut()) } == winapi::FALSE
+            {
+                Err(io::Error::last_os_error())
+            } else {
+                Ok(())
+            }
+        }
+    }
+
+    /// Use `WriteProcessMemory` to write memory from another process on Windows.
+    impl PutAddress for ProcessHandle {
+        fn put_address(&self, addr: usize, buf: &[u8]) -> io::Result<()> {
+            if buf.len() == 0 {
+                return Ok(());
+            }
+            if unsafe { kernel32::WriteProcessMemory(*self,
+                                                     addr as winapi::LPVOID,
+                                                     buf.as_ptr() as winapi::LPCVOID,
+                                                     mem::size_of_val(buf) as winapi::SIZE_T,
+                                                     ptr::null_mut()) } == winapi::FALSE
+            {
+                Err(io::Error::last_os_error())
+            } else {
+                Ok(())
+            }
+        }
+        fn get_offset(&self, offsets: &[usize]) -> usize { 
+            let mut offset: usize = 0;
+            let noffsets: usize = offsets.len();
+            for i in 0..noffsets-1 { 
+                offset +=  offsets[i];
+                unsafe {
+                    let mut copy: [u8; 8] = [0; 8];
+                    self.copy_address(offset, &mut copy)
+                        .map_err(|e| {
+                            warn!("copy_address failed for {:x}: {:?}", offset, e);
+                            e
+                        }).unwrap();
+                    offset = mem::transmute(copy);
+                }
+            }
+                    
+            offset + offsets[noffsets-1]
+        }
+    }
+}
+
+/// Copy `length` bytes of memory at `addr` from `source`.
+///
+/// This is just a convenient way to call `CopyAddress::copy_address` without
+/// having to provide your own buffer.
+pub fn copy_address<T>(addr: usize, length: usize, source: &T) -> io::Result<Vec<u8>>
+    where T: CopyAddress
+{
+    debug!("copy_address: addr: {:x}", addr);
+
+    let mut copy = vec![0; length];
+
+    source.copy_address(addr, &mut copy)
+        .map_err(|e| {
+            warn!("copy_address failed for {:x}: {:?}", addr, e);
+            e
+        })
+        .and(Ok(copy))
+} 

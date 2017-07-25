@@ -1,0 +1,16 @@
+[package]
+name = "processes"
+version = "0.1.0"
+authors = ["Tommoa <tommoa256@gmail.com>"]
+
+[dependencies]
+libc = "0.2.15"
+log = "0.3.6"
+
+[target.'cfg(target_os="macos")'.dependencies]
+mach = "0.0.5"
+
+[target.'cfg(windows)'.dependencies]
+winapi = "0.2"
+kernel32-sys = "0.2"
+
