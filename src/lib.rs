@@ -262,6 +262,42 @@ mod platform {
             offset + offsets[noffsets-1]
         }
     }
+
+    /// A helper function to turn a c_char array to a String
+    fn utf8_to_string(bytes: &[i8]) -> String { 
+        use std::ffi::CStr;
+        unsafe { CStr::from_ptr(bytes.as_ptr()).to_string_lossy().into_owned() }
+    }
+
+    pub fn get_pid(process_name: String) -> Pid { 
+        let mut entry = winapi::tlhelp32::PROCESSENTRY32 {
+            dwSize: mem::size_of::<winapi::tlhelp32::PROCESSENTRY32>() as u32,
+            cntUsage: 0,
+            th32ProcessID: 0,
+            th32DefaultHeapID: 0,
+            th32ModuleID: 0,
+            cntThreads: 0,
+            th32ParentProcessID: 0,
+            pcPriClassBase: 0,
+            dwFlags: 0, 
+            szExeFile: [0; winapi::MAX_PATH]
+        };
+
+        extern crate kernel32;
+        let snapshot: winapi::HANDLE;
+        unsafe {
+            snapshot = kernel32::CreateToolhelp32Snapshot(winapi::tlhelp32::TH32CS_SNAPPROCESS, 0); 
+            if kernel32::Process32First(snapshot, &mut entry) == winapi::TRUE {
+                while kernel32::Process32Next(snapshot, &mut entry) == winapi::TRUE { 
+                    if utf8_to_string(&entry.szExeFile) == process_name { 
+                        return entry.th32ProcessID
+                    }
+                }
+            }
+        }
+
+        0
+    } 
 }
 
 /// Copy `length` bytes of memory at `addr` from `source`.
