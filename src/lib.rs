@@ -12,7 +12,7 @@ pub trait CopyAddress {
 
 pub trait PutAddress {
     fn put_address(&self, addr: usize, buf: &[u8]) -> io::Result<()>;
-    fn get_offset(&self, offsets: &[usize]) -> usize;
+    fn get_offset(&self, offsets: &Vec<usize>) -> usize;
 }
 
 pub use platform::Pid;
@@ -243,7 +243,7 @@ mod platform {
                 Ok(())
             }
         }
-        fn get_offset(&self, offsets: &[usize]) -> usize { 
+        fn get_offset(&self, offsets: &Vec<usize>) -> usize { 
             let mut offset: usize = 0;
             let noffsets: usize = offsets.len();
             for i in 0..noffsets-1 { 
@@ -283,7 +283,6 @@ mod platform {
             szExeFile: [0; winapi::MAX_PATH]
         };
 
-        extern crate kernel32;
         let snapshot: winapi::HANDLE;
         unsafe {
             snapshot = kernel32::CreateToolhelp32Snapshot(winapi::tlhelp32::TH32CS_SNAPPROCESS, 0); 
