@@ -2,6 +2,8 @@
 name = "process-memory"
 version = "0.1.0"
 authors = ["Tommoa <tommoa256@gmail.com>"]
+readme = "README.md"
+license = "LICENSE"
 
 [dependencies]
 libc = "0.2.15"
