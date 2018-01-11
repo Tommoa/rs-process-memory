@@ -1,5 +1,5 @@
 [package]
-name = "processes"
+name = "process-memory"
 version = "0.1.0"
 authors = ["Tommoa <tommoa256@gmail.com>"]
 

@@ -1,10 +1,13 @@
 /// This crate is based off read-process-memory by luser. I have added the ability
 /// to write to process memory as well (but only for Windows so far) so that it can
 /// be used as a general purpose memory accesser
-#[macro_use] extern crate log;
 extern crate libc;
 
-use std::{io};
+#[cfg(windows)]
+extern crate winapi;
+
+
+use std::io;
 
 pub trait CopyAddress {
     fn copy_address(&self, addr: usize, buf: &mut [u8]) -> io::Result<()>;
@@ -18,6 +21,10 @@ pub trait PutAddress {
 pub use platform::Pid;
 pub use platform::ProcessHandle;
 
+pub trait Inject {
+    fn inject(&self, dll: std::path::PathBuf) -> io::Result<ProcessHandle>;
+}
+
 pub trait TryIntoProcessHandle {
     fn try_into_process_handle(&self) -> io::Result<ProcessHandle>;
 }
@@ -28,25 +35,42 @@ impl TryIntoProcessHandle for ProcessHandle {
     }
 }
 
+pub trait HandleChecker { 
+    fn check_handle(&self) -> bool;
+    #[cfg(target_os="linux")]
+    fn null_type() -> libc::pid_t;
+    #[cfg(windows)]
+    fn null_type() -> winapi::HANDLE;
+}
+
 #[cfg(target_os="linux")]
-mod platform {
-    use libc::{pid_t, c_void, iovec, process_vm_readv};
+pub mod platform {
+    use libc::{pid_t, c_void, iovec, process_vm_readv, process_vm_writev};
     use std::io;
     use std::process::Child;
 
-    use super::{CopyAddress, TryIntoProcessHandle};
+    use super::{CopyAddress, TryIntoProcessHandle, PutAddress, HandleChecker};
 
     /// On Linux a `Pid` is just a `libc::pid_t`.
     pub type Pid = pid_t;
     /// On Linux a `ProcessHandle` is just a `libc::pid_t`.
     pub type ProcessHandle = pid_t;
 
+    impl HandleChecker for ProcessHandle {
+        fn check_handle(&self) -> bool {
+            *self != 0
+        }
+        fn null_type() -> Pid {
+            0
+        }
+    }
+
     /// A `process::Child` always has a pid, which is all we need on Linux.
     impl TryIntoProcessHandle for Child {
         fn try_into_process_handle(&self) -> io::Result<ProcessHandle> {
             Ok(self.id() as pid_t)
         }
-    }
+    } 
 
     impl CopyAddress for ProcessHandle {
         fn copy_address(&self, addr: usize, buf: &mut [u8]) -> io::Result<()> {
@@ -68,6 +92,58 @@ mod platform {
             }
         }
     }
+    impl PutAddress for ProcessHandle { 
+        fn put_address(&self, addr: usize, buf: &[u8]) -> io::Result<()> {
+            let local_iov = iovec {
+                iov_base: buf.as_ptr() as *mut c_void,
+                iov_len: buf.len(),
+            };
+            let remote_iov = iovec {
+                iov_base: addr as *mut c_void,
+                iov_len: buf.len(),
+            };
+            let result = unsafe {
+                process_vm_writev(*self, &local_iov, 1, &remote_iov, 1, 0)
+            };
+            if result == -1 {
+                Err(io::Error::last_os_error())
+            } else {
+                Ok(())
+            }
+        }
+        fn get_offset(&self, offsets: &Vec<usize>) -> usize { 
+            use std::mem;
+            let mut offset: usize = 0;
+            let noffsets: usize = offsets.len();
+            for i in 0..noffsets-1 { 
+                offset +=  offsets[i];
+                unsafe {
+                    let mut copy: [u8; 8] = [0; 8];
+                    self.copy_address(offset, &mut copy)
+                        .map_err(|e| {
+                            warn!("copy_address failed for {:x}: {:?}", offset, e);
+                            e
+                        }).unwrap();
+                    offset = mem::transmute(copy);
+                }
+            }
+                    
+            offset += offsets[noffsets-1];
+            offset
+        }
+    }
+    pub fn get_pid(process_name:&str) -> Pid { 
+        use std::process::Command;
+        let output = match Command::new("pidof").arg(process_name).output() {
+            Err(_) => return 0,
+            Ok(x) => x
+        };
+        let a : String = match String::from_utf8(output.stdout) { 
+            Err(_) => "0".to_string(),
+            Ok(x) => x
+        };
+        a.parse::<i32>().unwrap()
+    } 
 }
 
 #[cfg(target_os="macos")]
@@ -170,7 +246,7 @@ mod platform {
 }
 
 #[cfg(windows)]
-mod platform {
+pub mod platform {
     extern crate winapi;
     extern crate kernel32;
 
@@ -179,18 +255,29 @@ mod platform {
     use std::os::windows::io::{AsRawHandle, RawHandle};
     use std::process::Child;
     use std::ptr;
+    use std::path;
 
-    use super::{CopyAddress, TryIntoProcessHandle, PutAddress};
+    use super::{CopyAddress, TryIntoProcessHandle, PutAddress, HandleChecker, Inject};
 
     /// On Windows a `Pid` is a `DWORD`.
     pub type Pid = winapi::DWORD;
     /// On Windows a `ProcessHandle` is a `HANDLE`.
     pub type ProcessHandle = RawHandle;
 
+    impl HandleChecker for ProcessHandle {
+        fn check_handle(&self) -> bool {
+            self.is_null()
+        }
+        fn null_type() -> ProcessHandle { 
+            use std::ptr;
+            ptr::null_mut()
+        }
+    }
+
     /// A `Pid` can be turned into a `ProcessHandle` with `OpenProcess`.
     impl TryIntoProcessHandle for winapi::DWORD {
         fn try_into_process_handle(&self) -> io::Result<ProcessHandle> {
-            let handle = unsafe { kernel32::OpenProcess(winapi::winnt::PROCESS_VM_READ, winapi::FALSE, *self) };
+            let handle = unsafe { kernel32::OpenProcess(winapi::winnt::PROCESS_VM_READ | winapi::winnt::PROCESS_VM_WRITE | winapi::winnt::PROCESS_VM_OPERATION, winapi::FALSE, *self) };
             if handle == (0 as RawHandle) {
                 Err(io::Error::last_os_error())
             } else {
@@ -203,6 +290,40 @@ mod platform {
     impl TryIntoProcessHandle for Child {
         fn try_into_process_handle(&self) -> io::Result<ProcessHandle> {
             Ok(self.as_raw_handle())
+        }
+    }
+
+    impl Inject for ProcessHandle {
+        fn inject(&self, dll: path::PathBuf) -> io::Result<ProcessHandle> {
+            let path_str = match dll.to_str() {
+                Some(s) => s,
+                None => return Err(io::Error::new(io::ErrorKind::Other, "Couldn't turn dll path into a string!"))
+            };
+            let path_address = unsafe {
+                kernel32::VirtualAllocEx(*self,
+                                         ptr::null_mut(),
+                                         path_str.len() as winapi::SIZE_T,
+                                         winapi::winnt::MEM_RESERVE | winapi::winnt::MEM_COMMIT,
+                                         winapi::winnt::PAGE_EXECUTE_READWRITE)
+            } as usize;
+            match self.put_address(path_address, path_str.as_bytes()) {
+                Ok(_) => {},
+                Err(err) => return Err(err)
+            } 
+            let ll_address = unsafe {
+                kernel32::GetProcAddress(
+                    kernel32::GetModuleHandleA("kernel32.dll".as_bytes().as_ptr() as winapi::LPCSTR),
+                    "LoadLibraryA".as_bytes().as_ptr() as winapi::LPCSTR) 
+            };
+            Ok( unsafe { 
+                kernel32::CreateRemoteThread(*self,
+                                             ptr::null_mut(),
+                                             0,
+                                             mem::transmute(ll_address as *const ()),
+                                             path_address as winapi::LPVOID,
+                                             0,
+                                             ptr::null_mut())
+            })
         }
     }
 
@@ -249,7 +370,7 @@ mod platform {
             for i in 0..noffsets-1 { 
                 offset +=  offsets[i];
                 unsafe {
-                    let mut copy: [u8; 8] = [0; 8];
+                    let mut copy: [u8; mem::size_of::<usize>()] = [0; mem::size_of::<usize>()];
                     self.copy_address(offset, &mut copy)
                         .map_err(|e| {
                             warn!("copy_address failed for {:x}: {:?}", offset, e);
@@ -259,7 +380,8 @@ mod platform {
                 }
             }
                     
-            offset + offsets[noffsets-1]
+            offset += offsets[noffsets-1];
+            offset
         }
     }
 
@@ -269,7 +391,7 @@ mod platform {
         unsafe { CStr::from_ptr(bytes.as_ptr()).to_string_lossy().into_owned() }
     }
 
-    pub fn get_pid(process_name: String) -> Pid { 
+    pub fn get_pid(process_name: &str) -> Pid { 
         let mut entry = winapi::tlhelp32::PROCESSENTRY32 {
             dwSize: mem::size_of::<winapi::tlhelp32::PROCESSENTRY32>() as u32,
             cntUsage: 0,
