@@ -3,7 +3,7 @@ name = "process-memory"
 version = "0.1.0"
 authors = ["Tommoa <tommoa256@gmail.com>"]
 readme = "README.md"
-license = "LICENSE"
+license = "MIT"
 description = "A rust library that can read/write/inject into other processes."
 
 [dependencies]
