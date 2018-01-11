@@ -5,6 +5,7 @@ authors = ["Tommoa <tommoa256@gmail.com>"]
 readme = "README.md"
 license = "MIT"
 description = "A rust library that can read/write/inject into other processes."
+repository = "https://github.com/Tommoa/rs-process-memory"
 
 [dependencies]
 libc = "0.2.15"
