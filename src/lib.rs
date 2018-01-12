@@ -1,11 +1,11 @@
-/// This crate is based off read-process-memory by luser. I have added the ability
-/// to write to process memory as well (but only for Windows so far) so that it can
-/// be used as a general purpose memory accesser
+#![feature(specialization)]
 #[macro_use] extern crate log;
 extern crate libc;
 
 #[cfg(windows)]
 extern crate winapi;
+
+pub mod data_member;
 
 
 use std::io;
