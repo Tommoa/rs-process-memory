@@ -41,7 +41,7 @@ pub trait HandleChecker {
     #[cfg(target_os="linux")]
     fn null_type() -> libc::pid_t;
     #[cfg(windows)]
-    fn null_type() -> winapi::HANDLE;
+    fn null_type() -> winapi::um::winnt::HANDLE;
 }
 
 #[cfg(target_os="linux")]
@@ -249,11 +249,11 @@ mod platform {
 #[cfg(windows)]
 pub mod platform {
     extern crate winapi;
-    extern crate kernel32;
+    use winapi::shared::minwindef;
 
     use std::io;
     use std::mem;
-    use std::os::windows::io::{AsRawHandle, RawHandle};
+    use std::os::windows::io::AsRawHandle;
     use std::process::Child;
     use std::ptr;
     use std::path;
@@ -261,9 +261,9 @@ pub mod platform {
     use super::{CopyAddress, TryIntoProcessHandle, PutAddress, HandleChecker, Inject};
 
     /// On Windows a `Pid` is a `DWORD`.
-    pub type Pid = winapi::DWORD;
+    pub type Pid = minwindef::DWORD;
     /// On Windows a `ProcessHandle` is a `HANDLE`.
-    pub type ProcessHandle = RawHandle;
+    pub type ProcessHandle = winapi::um::winnt::HANDLE;
 
     impl HandleChecker for ProcessHandle {
         fn check_handle(&self) -> bool {
@@ -276,10 +276,10 @@ pub mod platform {
     }
 
     /// A `Pid` can be turned into a `ProcessHandle` with `OpenProcess`.
-    impl TryIntoProcessHandle for winapi::DWORD {
+    impl TryIntoProcessHandle for minwindef::DWORD {
         fn try_into_process_handle(&self) -> io::Result<ProcessHandle> {
-            let handle = unsafe { kernel32::OpenProcess(winapi::winnt::PROCESS_VM_READ | winapi::winnt::PROCESS_VM_WRITE | winapi::winnt::PROCESS_VM_OPERATION, winapi::FALSE, *self) };
-            if handle == (0 as RawHandle) {
+            let handle = unsafe { winapi::um::processthreadsapi::OpenProcess(winapi::um::winnt::PROCESS_VM_READ | winapi::um::winnt::PROCESS_VM_WRITE | winapi::um::winnt::PROCESS_VM_OPERATION, winapi::shared::minwindef::FALSE, *self) };
+            if handle == (0 as ProcessHandle) {
                 Err(io::Error::last_os_error())
             } else {
                 Ok(handle)
@@ -290,7 +290,7 @@ pub mod platform {
     /// A `std::process::Child` has a `HANDLE` from calling `CreateProcess`.
     impl TryIntoProcessHandle for Child {
         fn try_into_process_handle(&self) -> io::Result<ProcessHandle> {
-            Ok(self.as_raw_handle())
+            Ok(self.as_raw_handle() as ProcessHandle)
         }
     }
 
@@ -301,27 +301,27 @@ pub mod platform {
                 None => return Err(io::Error::new(io::ErrorKind::Other, "Couldn't turn dll path into a string!"))
             };
             let path_address = unsafe {
-                kernel32::VirtualAllocEx(*self,
+                winapi::um::memoryapi::VirtualAllocEx(*self,
                                          ptr::null_mut(),
-                                         path_str.len() as winapi::SIZE_T,
-                                         winapi::winnt::MEM_RESERVE | winapi::winnt::MEM_COMMIT,
-                                         winapi::winnt::PAGE_EXECUTE_READWRITE)
+                                         path_str.len() as winapi::shared::basetsd::SIZE_T,
+                                         winapi::um::winnt::MEM_RESERVE | winapi::um::winnt::MEM_COMMIT,
+                                         winapi::um::winnt::PAGE_EXECUTE_READWRITE)
             } as usize;
             match self.put_address(path_address, path_str.as_bytes()) {
                 Ok(_) => {},
                 Err(err) => return Err(err)
             } 
             let ll_address = unsafe {
-                kernel32::GetProcAddress(
-                    kernel32::GetModuleHandleA("kernel32.dll".as_bytes().as_ptr() as winapi::LPCSTR),
-                    "LoadLibraryA".as_bytes().as_ptr() as winapi::LPCSTR) 
+                winapi::um::libloaderapi::GetProcAddress(
+                    winapi::um::libloaderapi::GetModuleHandleA("kernel32.dll".as_bytes().as_ptr() as winapi::um::winnt::LPCSTR),
+                    "LoadLibraryA".as_bytes().as_ptr() as winapi::um::winnt::LPCSTR) 
             };
             Ok( unsafe { 
-                kernel32::CreateRemoteThread(*self,
+                winapi::um::processthreadsapi::CreateRemoteThread(*self,
                                              ptr::null_mut(),
                                              0,
                                              mem::transmute(ll_address as *const ()),
-                                             path_address as winapi::LPVOID,
+                                             path_address as minwindef::LPVOID,
                                              0,
                                              ptr::null_mut())
             })
@@ -335,11 +335,11 @@ pub mod platform {
                 return Ok(());
             }
 
-            if unsafe { kernel32::ReadProcessMemory(*self,
-                                                    addr as winapi::LPVOID,
-                                                    buf.as_mut_ptr() as winapi::LPVOID,
-                                                    mem::size_of_val(buf) as winapi::SIZE_T,
-                                                    ptr::null_mut()) } == winapi::FALSE
+            if unsafe { winapi::um::memoryapi::ReadProcessMemory(*self,
+                                                    addr as minwindef::LPVOID,
+                                                    buf.as_mut_ptr() as minwindef::LPVOID,
+                                                    mem::size_of_val(buf) as winapi::shared::basetsd::SIZE_T,
+                                                    ptr::null_mut()) } == winapi::shared::minwindef::FALSE
             {
                 Err(io::Error::last_os_error())
             } else {
@@ -354,11 +354,11 @@ pub mod platform {
             if buf.len() == 0 {
                 return Ok(());
             }
-            if unsafe { kernel32::WriteProcessMemory(*self,
-                                                     addr as winapi::LPVOID,
-                                                     buf.as_ptr() as winapi::LPCVOID,
-                                                     mem::size_of_val(buf) as winapi::SIZE_T,
-                                                     ptr::null_mut()) } == winapi::FALSE
+            if unsafe { winapi::um::memoryapi::WriteProcessMemory(*self,
+                                                     addr as minwindef::LPVOID,
+                                                     buf.as_ptr() as minwindef::LPCVOID,
+                                                     mem::size_of_val(buf) as winapi::shared::basetsd::SIZE_T,
+                                                     ptr::null_mut()) } == winapi::shared::minwindef::FALSE
             {
                 Err(io::Error::last_os_error())
             } else {
@@ -393,8 +393,8 @@ pub mod platform {
     }
 
     pub fn get_pid(process_name: &str) -> Pid { 
-        let mut entry = winapi::tlhelp32::PROCESSENTRY32 {
-            dwSize: mem::size_of::<winapi::tlhelp32::PROCESSENTRY32>() as u32,
+        let mut entry = winapi::um::tlhelp32::PROCESSENTRY32 {
+            dwSize: mem::size_of::<winapi::um::tlhelp32::PROCESSENTRY32>() as u32,
             cntUsage: 0,
             th32ProcessID: 0,
             th32DefaultHeapID: 0,
@@ -403,14 +403,14 @@ pub mod platform {
             th32ParentProcessID: 0,
             pcPriClassBase: 0,
             dwFlags: 0, 
-            szExeFile: [0; winapi::MAX_PATH]
+            szExeFile: [0; minwindef::MAX_PATH]
         };
 
-        let snapshot: winapi::HANDLE;
+        let snapshot: ProcessHandle;
         unsafe {
-            snapshot = kernel32::CreateToolhelp32Snapshot(winapi::tlhelp32::TH32CS_SNAPPROCESS, 0); 
-            if kernel32::Process32First(snapshot, &mut entry) == winapi::TRUE {
-                while kernel32::Process32Next(snapshot, &mut entry) == winapi::TRUE { 
+            snapshot = winapi::um::tlhelp32::CreateToolhelp32Snapshot(winapi::um::tlhelp32::TH32CS_SNAPPROCESS, 0); 
+            if winapi::um::tlhelp32::Process32First(snapshot, &mut entry) == minwindef::TRUE {
+                while winapi::um::tlhelp32::Process32Next(snapshot, &mut entry) == minwindef::TRUE { 
                     if utf8_to_string(&entry.szExeFile) == process_name { 
                         return entry.th32ProcessID
                     }
