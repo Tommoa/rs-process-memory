@@ -6,6 +6,7 @@ extern crate libc;
 extern crate winapi;
 
 pub mod data_member;
+pub mod local_member;
 
 
 use std::io;
@@ -278,7 +279,7 @@ pub mod platform {
     /// A `Pid` can be turned into a `ProcessHandle` with `OpenProcess`.
     impl TryIntoProcessHandle for minwindef::DWORD {
         fn try_into_process_handle(&self) -> io::Result<ProcessHandle> {
-            let handle = unsafe { winapi::um::processthreadsapi::OpenProcess(winapi::um::winnt::PROCESS_VM_READ | winapi::um::winnt::PROCESS_VM_WRITE | winapi::um::winnt::PROCESS_VM_OPERATION, winapi::shared::minwindef::FALSE, *self) };
+            let handle = unsafe { winapi::um::processthreadsapi::OpenProcess(winapi::um::winnt::PROCESS_CREATE_THREAD | winapi::um::winnt::PROCESS_QUERY_INFORMATION | winapi::um::winnt::PROCESS_VM_READ | winapi::um::winnt::PROCESS_VM_WRITE | winapi::um::winnt::PROCESS_VM_OPERATION, winapi::shared::minwindef::FALSE, *self) };
             if handle == (0 as ProcessHandle) {
                 Err(io::Error::last_os_error())
             } else {
@@ -296,6 +297,8 @@ pub mod platform {
 
     impl Inject for ProcessHandle {
         fn inject(&self, dll: path::PathBuf) -> io::Result<ProcessHandle> {
+            use std::ffi::CString;
+            use std::io::Error;
             let path_str = match dll.to_str() {
                 Some(s) => s,
                 None => return Err(io::Error::new(io::ErrorKind::Other, "Couldn't turn dll path into a string!"))
@@ -313,9 +316,12 @@ pub mod platform {
             } 
             let ll_address = unsafe {
                 winapi::um::libloaderapi::GetProcAddress(
-                    winapi::um::libloaderapi::GetModuleHandleA("kernel32.dll".as_bytes().as_ptr() as winapi::um::winnt::LPCSTR),
-                    "LoadLibraryA".as_bytes().as_ptr() as winapi::um::winnt::LPCSTR) 
+                    winapi::um::libloaderapi::GetModuleHandleA(CString::new("kernel32.dll").unwrap().as_ptr() as winapi::um::winnt::LPCSTR),
+                    CString::new("LoadLibraryA").unwrap().as_ptr() as winapi::um::winnt::LPCSTR) 
             };
+            if ll_address as usize == 0 { 
+                return Err(Error::last_os_error());
+            }
             Ok( unsafe { 
                 winapi::um::processthreadsapi::CreateRemoteThread(*self,
                                              ptr::null_mut(),
