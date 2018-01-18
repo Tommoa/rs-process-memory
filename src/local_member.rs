@@ -3,7 +3,7 @@ use std::io;
 use std::str::FromStr;
 use std::fmt::Debug;
 
-trait LocalMemory {
+pub trait LocalMemory {
     fn set_offset(&mut self, new_offsets: [usize; 10]);
     fn read(&self) -> Result<String, io::Error>;
     fn write(&self, value: &str) -> Result<(), io::Error>;
