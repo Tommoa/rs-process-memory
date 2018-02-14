@@ -10,7 +10,7 @@ trait Attempt {
     fn attempt(&self);
 }
 
-impl<T> Attempt for Result<(), T> {
+impl<T, U> Attempt for Result<U, T> {
     fn attempt(&self) {
         match self {
             &Ok(_) => {},

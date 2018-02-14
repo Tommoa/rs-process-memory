@@ -7,13 +7,28 @@ license = "MIT"
 description = "A rust library that can read/write/inject into other processes."
 repository = "https://github.com/Tommoa/rs-process-memory"
 
+[[example]]
+name = "process-dll"
+crate-type = ["cdylib"]
+
+[[example]]
+name = "inject"
+crate-type = ["bin"]
+
 [dependencies]
-libc = "0.2.15"
-log = "0.4.1"
+libc = "0.2"
+log = "0.4"
+rmp-serde = "*"
+serde = "*"
+serde_derive = "*"
 
 [target.'cfg(target_os="macos")'.dependencies]
 mach = "0.0.5"
 
 [target.'cfg(windows)'.dependencies]
-winapi = { version = "0.3", features = ["winnt", "tlhelp32", "memoryapi", "libloaderapi", "minwindef", "processthreadsapi"] }
+winapi = { version = "0.3", features = ["psapi", "winnt", "tlhelp32", "memoryapi", "libloaderapi", "minwindef", "processthreadsapi"] }
+named_pipe = "*"
+
+[dev-dependencies]
+env_logger = "*"
 

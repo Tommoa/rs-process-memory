@@ -1,12 +1,23 @@
 #![feature(specialization)]
+#![feature(optin_builtin_traits)]
 #[macro_use] extern crate log;
+#[macro_use] extern crate serde_derive;
 extern crate libc;
+extern crate serde;
+extern crate rmp_serde as rmps;
 
 #[cfg(windows)]
 extern crate winapi;
+#[cfg(windows)]
+extern crate named_pipe;
+
+#[cfg(windows)]
+pub use named_pipe::*;
 
 pub mod data_member;
 pub mod local_member;
+#[cfg(windows)]
+pub mod remote_member;
 
 
 use std::io;
