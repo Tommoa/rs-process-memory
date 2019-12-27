@@ -1,3 +1,5 @@
+#![cfg(windows)]
+
 extern crate winapi;
 extern crate process_memory;
 

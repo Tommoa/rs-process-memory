@@ -1,100 +1,132 @@
-use { PutAddress, CopyAddress, ProcessHandle };
+use crate::{ Memory, PutAddress, CopyAddress, ProcessHandle };
 
-use std::{ io, mem, marker, fmt, str };
-use std::marker::PhantomData;
-use std::cell::RefCell;
-
-pub trait Memory {
-    fn set_offset(&mut self, Vec<usize>);
-    fn read(&self, handle: ProcessHandle) -> Result<String, io::Error>;
-    fn write(&self, handle: ProcessHandle, value: &str) -> Result<(), io::Error>;
-}
-
-pub struct DataMember<T> 
-    where <T as str::FromStr>::Err: fmt::Debug,
-    T: marker::Sized + fmt::Display + ToString + str::FromStr 
-{
+/// # Tools for working with memory of other programs
+/// This module provides functions for modifying the memory of a program from outside of the
+/// address space of that program.
+///
+/// Examples:
+/// ```rust
+/// # use process_memory::{Memory, DataMember, Pid, TryIntoProcessHandle};
+/// // We have a variable with some value
+/// let x = 4u32;
+/// println!("Original x-value: {}", x);
+///
+/// // We need to make sure that we get a handle to a process, in this case, ourselves
+/// let handle = (std::process::id() as Pid).try_into_process_handle().unwrap();
+/// // We make a `DataMember` that has an offset referring to its location in memory
+/// let member = DataMember::new_offset(handle, vec![&x as *const _ as usize]);
+/// // The memory refered to is now the same
+/// println!("Memory location: &x: {}, member: {}", &x as *const _ as usize,
+///     member.get_offset().unwrap());
+/// assert_eq!(&x as *const _ as usize, member.get_offset().unwrap());
+/// // The value of the member is the same as the variable
+/// println!("Member value: {}", member.read().unwrap());
+/// assert_eq!(x, member.read().unwrap());
+/// // We can write to and modify the value of the variable using the member
+/// member.write(&6u32).unwrap();
+/// println!("New x-value: {}", x);
+/// assert_eq!(x, 6u32);
+/// ```
+#[derive(Clone, Debug)]
+pub struct DataMember<T> {
     offsets:    Vec<usize>,
-    buffer:     RefCell<Vec<u8>>,
-    _phantom:   PhantomData<*const T>
+    process:    ProcessHandle,
+    _phantom:   std::marker::PhantomData<*mut T>
 } 
 
-impl<T> DataMember<T> 
-    where <T as str::FromStr>::Err: fmt::Debug,
-    T: marker::Sized + fmt::Display + ToString + str::FromStr
-{
-    pub fn new() -> DataMember<T> {
+impl<T: Sized + Copy> DataMember<T> {
+    /// Create a new DataMember from a [`ProcessHandle`]. You must remember to call
+    /// [`try_into_process_handle`](crate::TryIntoProcessHandle::try_into_process_handle) on a
+    /// [`crate::Pid`], because the types may be elided, resulting in an error.
+    ///
+    /// By default, there will be no offsets, leading to an error when attempting to call
+    /// [`Memory::read`], so you will likely need to call [`Memory::set_offset`] before attempting
+    /// any reads.
+    pub fn new(handle: ProcessHandle) -> DataMember<T> {
         DataMember {
             offsets:    Vec::new(),
-            buffer:     RefCell::new(vec![0u8; mem::size_of::<T>()]),
-            _phantom:   PhantomData
+            process:    handle,
+            _phantom:   std::marker::PhantomData
+        }
+    }
+
+    /// Create a new DataMember from a [`ProcessHandle`] and some number of offsets. You must
+    /// remember to call
+    /// [`try_into_process_handle`](crate::TryIntoProcessHandle::try_into_process_handle) on a
+    /// [`Pid`](crate::Pid) as sometimes the `Pid` can have the same backing type as a
+    /// [`ProcessHandle`](crate::ProcessHandle), resulting in an error.
+    pub fn new_offset(handle: ProcessHandle, offsets: Vec<usize>) -> DataMember<T> {
+        DataMember {
+            offsets:  offsets,
+            process:  handle,
+            _phantom: std::marker::PhantomData
         }
     }
 } 
 
-impl Memory for DataMember<String> {
+impl <T: Sized + Copy> Memory<T> for DataMember<T> {
     fn set_offset(&mut self, new_offsets: Vec<usize>) {
         self.offsets = new_offsets;
     }
-    fn read(&self, handle: ProcessHandle) -> Result<String, io::Error> {
-        let offset = handle.get_offset(&self.offsets);
-        let mut parts = Vec::<u8>::new(); 
-        let mut addition_offset = 0usize;
-        loop {
-            let mut byte = [0u8; 1];
-            match handle.copy_address(offset + addition_offset, &mut byte) {
-                Ok(_) => {},
-                Err(x) => return Err(x)
-            };
-            if byte[0] == 0 {
-                break;
-            }
-            addition_offset += 1;
-            parts.push(byte[0]);
-        }
-        Ok(String::from_utf8(parts).unwrap())
+
+    fn get_offset(&self) -> std::io::Result<usize> {
+        self.process.get_offset(&self.offsets)
     }
-    fn write(&self, handle: ProcessHandle, value: &str) -> Result<(), io::Error> {
-        let offset = handle.get_offset(&self.offsets);
-        let bytes = value.as_bytes();
-        match handle.put_address(offset, bytes) {
-            Ok(_) => {
-                handle.put_address(offset + bytes.len(), &[0u8])
-            }
-            Err(x) => Err(x)
-        }
+
+    fn read(&self) -> std::io::Result<T> {
+        let offset = self.process.get_offset(&self.offsets)?;
+        // This can't be [0u8;size_of::<T>()] because no const generics.
+        // It will be freed at the end of the function because no references are held to it.
+        let mut buffer = vec![0u8;std::mem::size_of::<T>()];
+        self.process.copy_address(offset, &mut buffer)?;
+        Ok(unsafe { (buffer.as_ptr() as *const T).read_unaligned() })
+    }
+
+    fn write(&self, value: &T) -> std::io::Result<()> {
+        use std::slice;
+        let offset = self.process.get_offset(&self.offsets)?;
+        let buffer: &[u8] = unsafe { 
+            slice::from_raw_parts(value as *const _ as _, std::mem::size_of::<T>())
+        };
+        self.process.put_address(offset, &buffer)
     }
 }
 
-impl <T> Memory for DataMember<T> 
-    where <T as str::FromStr>::Err: fmt::Debug,
-    T: marker::Sized + fmt::Display + ToString + str::FromStr
-{
-    default fn set_offset(&mut self, new_offsets: Vec<usize>) {
-        self.offsets = new_offsets;
+#[cfg(test)]
+mod test {
+    use super::*;
+    use crate::TryIntoProcessHandle;
+    #[test]
+    fn modify_remote_i32() {
+        let test = 4i32;
+        let handle = (std::process::id() as crate::Pid).try_into_process_handle().unwrap();
+        println!("Process Handle: {}", handle);
+        let mut member = DataMember::<i32>::new(handle);
+        member.set_offset(vec![&test as *const _ as usize]);
+        assert_eq!(test, member.read().unwrap());
+        member.write(&5i32).unwrap();
+        assert_eq!(test, 5i32);
     }
-    default fn read(&self, handle: ProcessHandle) -> Result<String, io::Error> {
-        let offset = handle.get_offset(&self.offsets);
-        let mut buffer = self.buffer.borrow_mut();
-        match handle.copy_address(offset, &mut buffer) {
-            Ok(_) => { 
-                let x : &T = unsafe { mem::transmute_copy(mem::transmute::<*mut Vec<u8>, &Vec<u8>>(self.buffer.as_ptr())) };
-                Ok(x.to_string())
-            },
-            Err(x) => {
-               return Err(x) 
-            }
-        }
+    #[test]
+    fn modify_remote_i64() {
+        let test = 3i64;
+        let handle = (std::process::id() as crate::Pid).try_into_process_handle().unwrap();
+        println!("Process Handle: {}", handle);
+        let mut member = DataMember::<i64>::new(handle);
+        member.set_offset(vec![&test as *const _ as usize]);
+        assert_eq!(test, member.read().unwrap());
+        member.write(&-1i64).unwrap();
+        assert_eq!(test, -1);
     }
-    default fn write(&self, handle: ProcessHandle, value: &str) -> Result<(), io::Error> {
-        use std::slice;
-        let offset = handle.get_offset(&self.offsets);
-        let value : T = value.parse().unwrap();
-        let p1 : *const T = &value;
-        let p2 : *const u8 = p1 as *const _;
-        let buffer = unsafe { 
-            slice::from_raw_parts(p2, mem::size_of::<T>())
-        };
-        handle.put_address(offset, &buffer)
+    #[test]
+    fn modify_remote_usize() {
+        let test = 0usize;
+        let handle = (std::process::id() as crate::Pid).try_into_process_handle().unwrap();
+        println!("Process Handle: {}", handle);
+        let mut member = DataMember::<usize>::new(handle);
+        member.set_offset(vec![&test as *const _ as usize]);
+        assert_eq!(test, member.read().unwrap());
+        member.write(&0xffff).unwrap();
+        assert_eq!(test,0xffff);
     }
 }

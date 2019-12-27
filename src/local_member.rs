@@ -1,100 +1,124 @@
-use std::marker::PhantomData;
-use std::str::FromStr;
-use std::fmt::Debug; 
+use crate::Memory;
 
-pub trait LocalMemory {
-    fn set_offset(&mut self, new_offsets: Vec<usize>);
-    fn read(&self) -> String;
-    fn write(&self, value: &str);
-}
-
+/// # Tools for working with local memory
+/// This module provides functions for modifying the memory of a program from within the address
+/// space of that program. This may be helpful for debug functions, or for an injected DLL.
+///
+/// Examples:
+/// ```rust
+/// # use process_memory::{Memory, LocalMember};
+/// // We have a variable with some value
+/// let x = 4u32;
+///
+/// // We make a `LocalMember` that has an offset referring to its location in memory
+/// let member = LocalMember::new_offset(vec![&x as *const _ as usize]);
+/// // The memory refered to is now the same
+/// assert_eq!(&x as *const _ as usize, member.get_offset().unwrap());
+/// // The value of the member is the same as the variable
+/// assert_eq!(x, member.read().unwrap());
+/// // We can write to and modify the value of the variable using the member
+/// member.write(&6u32).unwrap();
+/// assert_eq!(x, 6u32);
+/// ```
 #[derive(Clone, Debug)]
 pub struct LocalMember<T> {
     offsets:    Vec<usize>,
-    _phantom:   PhantomData<*const T>,
+    _phantom:   std::marker::PhantomData<*mut T>,
 }
 
-impl<T> LocalMember<T> 
-where T: Default + ToString + FromStr,
-<T as FromStr>::Err: Debug
-{
+impl<T: Sized + Copy> LocalMember<T> {
+    /// Creates a new `LocalMember` with no offsets. Any calls to
+    /// [`Memory::read`](crate::Memory::read) will attempt to read from a null pointer reference.
+    /// To set offsets, use [`Memory::set_offset`](crate::Memory::set_offset), or create the
+    /// `LocalMember` using [`new_offset`](LocalMember::new_offset).
     pub fn new() -> LocalMember<T> {
         LocalMember {
             offsets:    Vec::new(),
-            _phantom:   PhantomData
+            _phantom:   std::marker::PhantomData
         }
     }
-    pub fn get_offset(&self) -> usize {
-        use std::ptr::copy_nonoverlapping;
-        let mut offset = 0usize;
-        for i in 0..self.offsets.len()-1 { 
-            offset += self.offsets[i];
-            unsafe {
-                copy_nonoverlapping(offset as *const usize, &mut offset, 1);
-            }
-        } 
-        offset += self.offsets[self.offsets.len()-1];
-        offset
+
+    /// Create a new `LocalMember` with a given set of offsets.
+    pub fn new_offset(offsets: Vec<usize>) -> LocalMember<T> {
+        LocalMember {
+            offsets:  offsets,
+            _phantom: std::marker::PhantomData,
+        }
     }
 }
 
-impl LocalMemory for LocalMember<String> {
+impl<T: Sized + Copy> Memory<T> for LocalMember<T> {
     fn set_offset(&mut self, new_offsets: Vec<usize>) {
         self.offsets = new_offsets;
     }
-    fn read(&self) -> String {
-        use std::ptr::copy_nonoverlapping;
-        let offset = self.get_offset();
-        let mut parts = Vec::<u8>::new(); 
-        let mut addition_offset = 0usize;
-        loop {
-            let mut byte = 0u8;
+
+    fn get_offset(&self) -> std::io::Result<usize> {
+        let mut offset = 0usize;
+        for i in 0..self.offsets.len()-1 { 
+            offset = offset.wrapping_add(self.offsets[i]);
+            if offset == 0 {
+                return Err(std::io::Error::new(std::io::ErrorKind::Other,
+                        "Would be a null dereference!"));
+            }
+            // We can't guarantee alignment, so we must use `read_unaligned()`
+            // to ensure that its ok to read from, as `read()` requires that
+            // our source pointer is properly aligned.
             unsafe {
-                copy_nonoverlapping((offset + addition_offset) as *const u8, &mut byte, 1);
+                offset = (offset as *const usize).read_unaligned();
             }
-            if byte == 0 {
-                break;
-            }
-            addition_offset += 1;
-            parts.push(byte);
-        }
-        String::from_utf8(parts).unwrap()
+        } 
+        Ok(offset.wrapping_add(self.offsets[self.offsets.len()-1]))
     }
-    fn write(&self, value: &str) {
+
+    /// This will only return a error if one of the offsets gives a null pointer.
+    fn read(&self) -> std::io::Result<T> {
+        let offset = self.get_offset()? as *const T;
+        // Read the value of the pointer. We can't guarantee alignment, so this
+        // is `read_unaligned()` instead of `read()`
+        let x : T = unsafe { offset.read_unaligned() };
+        Ok(x)
+    }
+
+    /// This will only return a error if one of the offsets gives a null pointer.
+    fn write(&self, value: &T) -> std::io::Result<()> {
         use std::ptr::copy_nonoverlapping;
-        let offset = self.get_offset();
-        let bytes = value.as_bytes();
-        unsafe {
-            copy_nonoverlapping(&bytes, offset as *mut &[u8], bytes.len());
-            copy_nonoverlapping(&0u8, (offset + bytes.len()) as *mut u8, 1);
+
+        let offset = self.get_offset()? as *mut T;
+        unsafe { 
+            copy_nonoverlapping(value, offset, 1usize);
         }
+        Ok(())
     }
 }
 
-impl<T> LocalMemory for LocalMember<T> 
-where T: Default + ToString + FromStr,
-<T as FromStr>::Err: Debug
-{
-    default fn set_offset(&mut self, new_offsets: Vec<usize>) {
-        self.offsets = new_offsets;
+#[cfg(test)]
+mod test {
+    use super::*;
+    #[test]
+    fn modify_local_i32() {
+        let test = 4i32;
+        let mut member = LocalMember::<i32>::new();
+        member.set_offset(vec![&test as *const _ as usize]);
+        assert_eq!(test, member.read().unwrap());
+        member.write(&5i32).unwrap();
+        assert_eq!(test, 5i32);
     }
-    default fn read(&self) -> String {
-        use std::ptr::copy_nonoverlapping;
-
-        let offset = self.get_offset();
-        let mut out : T = T::default();
-        unsafe {
-            copy_nonoverlapping(offset as *const T, &mut out, 1usize);
-        }
-        out.to_string()
+    #[test]
+    fn modify_local_i64() {
+        let test = 3i64;
+        let mut member = LocalMember::<i64>::new();
+        member.set_offset(vec![&test as *const _ as usize]);
+        assert_eq!(test, member.read().unwrap());
+        member.write(&-1i64).unwrap();
+        assert_eq!(test, -1);
     }
-    default fn write(&self, value: &str) {
-        use std::ptr::copy_nonoverlapping;
-
-        let offset = self.get_offset();
-        let out : T = value.parse().unwrap();
-        unsafe {
-            copy_nonoverlapping(&out, offset as *mut T, 1usize);
-        }
+    #[test]
+    fn modify_local_usize() {
+        let test = 0usize;
+        let mut member = LocalMember::<usize>::new();
+        member.set_offset(vec![&test as *const _ as usize]);
+        assert_eq!(test, member.read().unwrap());
+        member.write(&0xffff).unwrap();
+        assert_eq!(test,0xffff);
     }
 }
