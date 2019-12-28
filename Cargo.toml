@@ -12,6 +12,9 @@ edition = "2018"
 name = "fastyboy"
 crate-type = ["bin"]
 
+[target.'cfg(windows)'.dev-dependencies]
+winapi = { version = "0.3", features = ["tlhelp32"] }
+
 [dependencies]
 libc = "0.2"
 
