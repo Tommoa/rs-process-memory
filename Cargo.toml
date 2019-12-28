@@ -16,7 +16,7 @@ crate-type = ["bin"]
 libc = "0.2"
 
 [target.'cfg(target_os="macos")'.dependencies]
-mach = "0.0.5"
+mach = "0.3"
 
 [target.'cfg(windows)'.dependencies]
-winapi = { version = "0.3", features = ["psapi", "winnt", "tlhelp32", "memoryapi", "libloaderapi", "minwindef", "processthreadsapi"] }
+winapi = { version = "0.3", features = ["winnt", "memoryapi", "minwindef", "processthreadsapi"] }
