@@ -20,7 +20,7 @@ use crate::Memory;
 /// member.write(&6u32).unwrap();
 /// assert_eq!(x, 6u32);
 /// ```
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Default)]
 pub struct LocalMember<T> {
     offsets:    Vec<usize>,
     _phantom:   std::marker::PhantomData<*mut T>,
@@ -41,7 +41,7 @@ impl<T: Sized + Copy> LocalMember<T> {
     /// Create a new `LocalMember` with a given set of offsets.
     pub fn new_offset(offsets: Vec<usize>) -> LocalMember<T> {
         LocalMember {
-            offsets:  offsets,
+            offsets,
             _phantom: std::marker::PhantomData,
         }
     }

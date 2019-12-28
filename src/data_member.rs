@@ -57,7 +57,7 @@ impl<T: Sized + Copy> DataMember<T> {
     /// [`ProcessHandle`](crate::ProcessHandle), resulting in an error.
     pub fn new_offset(handle: ProcessHandle, offsets: Vec<usize>) -> DataMember<T> {
         DataMember {
-            offsets:  offsets,
+            offsets,
             process:  handle,
             _phantom: std::marker::PhantomData
         }

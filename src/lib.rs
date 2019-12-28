@@ -1,6 +1,4 @@
 //! This crate provides tools for working with the raw memory of programs, whether that be the
-//! current running program or an external program. Some features that may be considered relevant
-//! (such as the ability to inject a DLL on Windows) are not included and will have to be
 //! implemented by the user.
 //!
 //! ## Examples
@@ -70,12 +68,12 @@ pub trait CopyAddress {
     ///
     /// If [`copy_address`] is already defined, then we can provide a standard implementation that
     /// will work across all operating systems.
-    fn get_offset(&self, offsets: &Vec<usize>) -> std::io::Result<usize> {
+    fn get_offset(&self, offsets: &[usize]) -> std::io::Result<usize> {
         // Look ma! No unsafes!
         let mut offset: usize = 0;
         let noffsets: usize = offsets.len();
-        for i in 0..noffsets-1 { 
-            offset +=  offsets[i];
+        for next_offset in offsets.iter().take(noffsets-1) {
+            offset +=  next_offset;
             let mut copy: [u8; std::mem::size_of::<usize>()] = [0; std::mem::size_of::<usize>()];
             self.copy_address(offset, &mut copy)?;
             offset = usize::from_ne_bytes(copy);
@@ -396,7 +394,7 @@ mod platform {
     /// Use `ReadProcessMemory` to read memory from another process on Windows.
     impl CopyAddress for ProcessHandle {
         fn copy_address(&self, addr: usize, buf: &mut [u8]) -> std::io::Result<()> {
-            if buf.len() == 0 {
+            if buf.is_empty() {
                 return Ok(());
             }
 
@@ -416,7 +414,7 @@ mod platform {
     /// Use `WriteProcessMemory` to write memory from another process on Windows.
     impl PutAddress for ProcessHandle {
         fn put_address(&self, addr: usize, buf: &[u8]) -> std::io::Result<()> {
-            if buf.len() == 0 {
+            if buf.is_empty() {
                 return Ok(());
             }
             if unsafe { winapi::um::memoryapi::WriteProcessMemory(*self,
