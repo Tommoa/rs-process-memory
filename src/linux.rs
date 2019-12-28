@@ -11,9 +11,11 @@ pub type Pid = pid_t;
 pub type ProcessHandle = pid_t;
 
 impl HandleChecker for ProcessHandle {
+    #[must_use]
     fn check_handle(&self) -> bool {
         *self != 0
     }
+    #[must_use]
     fn null_type() -> Pid {
         0
     }

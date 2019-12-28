@@ -83,6 +83,7 @@ impl TryIntoProcessHandle for Pid {
 /// that jumped through those hoops and provided the task port.
 impl TryIntoProcessHandle for Child {
     fn try_into_process_handle(&self) -> std::io::Result<ProcessHandle> {
+        #[allow(clippy::cast_possible_wrap)]
         Pid::try_into_process_handle(&(self.id() as _))
     }
 }
@@ -90,6 +91,7 @@ impl TryIntoProcessHandle for Child {
 /// Here we use `mach_vm_write` to write a buffer to some arbitrary address on a process.
 impl PutAddress for ProcessHandle {
     fn put_address(&self, addr: usize, buf: &[u8]) -> std::io::Result<()> {
+        #[allow(clippy::cast_possible_truncation)]
         let result = unsafe { mach_vm_write(*self, addr as _, buf.as_ptr() as _, buf.len() as _) };
         if result != KERN_SUCCESS {
             return Err(std::io::Error::last_os_error());
