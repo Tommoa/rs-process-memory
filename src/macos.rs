@@ -119,7 +119,9 @@ impl CopyAddress for ProcessHandle {
             return Err(std::io::Error::last_os_error());
         }
 
-        if read_len != buf.len() as _ {
+        if read_len == buf.len() as _ {
+            Ok(())
+        } else {
             Err(std::io::Error::new(
                 std::io::ErrorKind::BrokenPipe,
                 format!(
@@ -128,8 +130,6 @@ impl CopyAddress for ProcessHandle {
                     read_len
                 ),
             ))
-        } else {
-            Ok(())
         }
     }
 }
