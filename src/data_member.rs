@@ -42,6 +42,7 @@ impl<T: Sized + Copy> DataMember<T> {
     /// By default, there will be no offsets, leading to an error when attempting to call
     /// [`Memory::read`], so you will likely need to call [`Memory::set_offset`] before attempting
     /// any reads.
+    #[must_use]
     pub fn new(handle: ProcessHandle) -> Self {
         Self {
             offsets: Vec::new(),
@@ -55,6 +56,7 @@ impl<T: Sized + Copy> DataMember<T> {
     /// [`try_into_process_handle`](crate::TryIntoProcessHandle::try_into_process_handle) on a
     /// [`Pid`](crate::Pid) as sometimes the `Pid` can have the same backing type as a
     /// [`ProcessHandle`](crate::ProcessHandle), resulting in an error.
+    #[must_use]
     pub fn new_offset(handle: ProcessHandle, offsets: Vec<usize>) -> Self {
         Self {
             offsets,
@@ -98,6 +100,7 @@ mod test {
     #[test]
     fn modify_remote_i32() {
         let test = 4_i32;
+        #[allow(clippy::cast_possible_wrap)]
         let handle = (std::process::id() as crate::Pid)
             .try_into_process_handle()
             .unwrap();
@@ -111,6 +114,7 @@ mod test {
     #[test]
     fn modify_remote_i64() {
         let test = 3_i64;
+        #[allow(clippy::cast_possible_wrap)]
         let handle = (std::process::id() as crate::Pid)
             .try_into_process_handle()
             .unwrap();
@@ -124,6 +128,7 @@ mod test {
     #[test]
     fn modify_remote_usize() {
         let test = 0_usize;
+        #[allow(clippy::cast_possible_wrap)]
         let handle = (std::process::id() as crate::Pid)
             .try_into_process_handle()
             .unwrap();
