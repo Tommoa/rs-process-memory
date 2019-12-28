@@ -9,8 +9,8 @@ repository = "https://github.com/Tommoa/rs-process-memory"
 edition = "2018"
 
 [[example]]
-name = "process-dll"
-crate-type = ["cdylib"]
+name = "fastyboy"
+crate-type = ["bin"]
 
 [dependencies]
 libc = "0.2"

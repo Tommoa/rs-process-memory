@@ -54,9 +54,6 @@
 #![deny(bad_style)]
 #![deny(unused)]
 
-#[cfg(windows)]
-extern crate winapi;
-
 mod data_member;
 mod local_member;
 
@@ -352,15 +349,14 @@ mod platform {
 }
 
 #[cfg(windows)]
-pub mod platform {
-    extern crate winapi;
+mod platform {
+    use winapi;
     use winapi::shared::minwindef;
 
     use std::mem;
     use std::os::windows::io::AsRawHandle;
     use std::process::Child;
     use std::ptr;
-    use std::path;
 
     use super::{CopyAddress, TryIntoProcessHandle, PutAddress, HandleChecker};
 
@@ -374,7 +370,6 @@ pub mod platform {
             self.is_null()
         }
         fn null_type() -> ProcessHandle { 
-            use std::ptr;
             ptr::null_mut()
         }
     }
@@ -436,41 +431,6 @@ pub mod platform {
             }
         }
     }
-
-    /// A helper function to turn a c_char array to a String
-    fn utf8_to_string(bytes: &[i8]) -> String { 
-        use std::ffi::CStr;
-        unsafe { CStr::from_ptr(bytes.as_ptr()).to_string_lossy().into_owned() }
-    }
-
-    pub fn get_pid(process_name: &str) -> Pid { 
-        let mut entry = winapi::um::tlhelp32::PROCESSENTRY32 {
-            dwSize: mem::size_of::<winapi::um::tlhelp32::PROCESSENTRY32>() as u32,
-            cntUsage: 0,
-            th32ProcessID: 0,
-            th32DefaultHeapID: 0,
-            th32ModuleID: 0,
-            cntThreads: 0,
-            th32ParentProcessID: 0,
-            pcPriClassBase: 0,
-            dwFlags: 0, 
-            szExeFile: [0; minwindef::MAX_PATH]
-        };
-
-        let snapshot: ProcessHandle;
-        unsafe {
-            snapshot = winapi::um::tlhelp32::CreateToolhelp32Snapshot(winapi::um::tlhelp32::TH32CS_SNAPPROCESS, 0); 
-            if winapi::um::tlhelp32::Process32First(snapshot, &mut entry) == minwindef::TRUE {
-                while winapi::um::tlhelp32::Process32Next(snapshot, &mut entry) == minwindef::TRUE { 
-                    if utf8_to_string(&entry.szExeFile) == process_name { 
-                        return entry.th32ProcessID
-                    }
-                }
-            }
-        }
-
-        0
-    } 
 }
 
 /// Copy `length` bytes of memory at `addr` from `source`.

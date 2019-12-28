@@ -17,14 +17,14 @@ fn main() {
 
 /// A helper function to get a Pid from the name of a process
 #[cfg(windows)]
-pub fn get_pid(process_name: &str) -> Pid {
+pub fn get_pid(process_name: &str) -> process_memory::Pid {
     /// A helper function to turn a c_char array to a String
     fn utf8_to_string(bytes: &[i8]) -> String { 
         use std::ffi::CStr;
         unsafe { CStr::from_ptr(bytes.as_ptr()).to_string_lossy().into_owned() }
     }
     let mut entry = winapi::um::tlhelp32::PROCESSENTRY32 {
-        dwSize: mem::size_of::<winapi::um::tlhelp32::PROCESSENTRY32>() as u32,
+        dwSize: std::mem::size_of::<winapi::um::tlhelp32::PROCESSENTRY32>() as u32,
         cntUsage: 0,
         th32ProcessID: 0,
         th32DefaultHeapID: 0,
@@ -33,13 +33,13 @@ pub fn get_pid(process_name: &str) -> Pid {
         th32ParentProcessID: 0,
         pcPriClassBase: 0,
         dwFlags: 0, 
-        szExeFile: [0; minwindef::MAX_PATH]
+        szExeFile: [0; winapi::shared::minwindef::MAX_PATH]
     };
-    let snapshot: ProcessHandle;
+    let snapshot: process_memory::ProcessHandle;
     unsafe {
         snapshot = winapi::um::tlhelp32::CreateToolhelp32Snapshot(winapi::um::tlhelp32::TH32CS_SNAPPROCESS, 0); 
-        if winapi::um::tlhelp32::Process32First(snapshot, &mut entry) == minwindef::TRUE {
-            while winapi::um::tlhelp32::Process32Next(snapshot, &mut entry) == minwindef::TRUE { 
+        if winapi::um::tlhelp32::Process32First(snapshot, &mut entry) == winapi::shared::minwindef::TRUE {
+            while winapi::um::tlhelp32::Process32Next(snapshot, &mut entry) == winapi::shared::minwindef::TRUE { 
                 if utf8_to_string(&entry.szExeFile) == process_name { 
                     return entry.th32ProcessID
                 }

@@ -100,7 +100,7 @@ mod test {
     fn modify_remote_i32() {
         let test = 4i32;
         let handle = (std::process::id() as crate::Pid).try_into_process_handle().unwrap();
-        println!("Process Handle: {}", handle);
+        println!("Process Handle: {:?}", handle);
         let mut member = DataMember::<i32>::new(handle);
         member.set_offset(vec![&test as *const _ as usize]);
         assert_eq!(test, member.read().unwrap());
@@ -111,7 +111,7 @@ mod test {
     fn modify_remote_i64() {
         let test = 3i64;
         let handle = (std::process::id() as crate::Pid).try_into_process_handle().unwrap();
-        println!("Process Handle: {}", handle);
+        println!("Process Handle: {:?}", handle);
         let mut member = DataMember::<i64>::new(handle);
         member.set_offset(vec![&test as *const _ as usize]);
         assert_eq!(test, member.read().unwrap());
@@ -122,7 +122,7 @@ mod test {
     fn modify_remote_usize() {
         let test = 0usize;
         let handle = (std::process::id() as crate::Pid).try_into_process_handle().unwrap();
-        println!("Process Handle: {}", handle);
+        println!("Process Handle: {:?}", handle);
         let mut member = DataMember::<usize>::new(handle);
         member.set_offset(vec![&test as *const _ as usize]);
         assert_eq!(test, member.read().unwrap());
