@@ -164,7 +164,7 @@ pub trait Memory<T> {
 }
 
 #[cfg(target_os="linux")]
-pub mod platform {
+mod platform {
     use libc;
 
     use libc::{pid_t, c_void, iovec, process_vm_readv, process_vm_writev};
