@@ -19,9 +19,13 @@ fn main() {
 #[cfg(windows)]
 pub fn get_pid(process_name: &str) -> process_memory::Pid {
     /// A helper function to turn a c_char array to a String
-    fn utf8_to_string(bytes: &[i8]) -> String { 
+    fn utf8_to_string(bytes: &[i8]) -> String {
         use std::ffi::CStr;
-        unsafe { CStr::from_ptr(bytes.as_ptr()).to_string_lossy().into_owned() }
+        unsafe {
+            CStr::from_ptr(bytes.as_ptr())
+                .to_string_lossy()
+                .into_owned()
+        }
     }
     let mut entry = winapi::um::tlhelp32::PROCESSENTRY32 {
         dwSize: std::mem::size_of::<winapi::um::tlhelp32::PROCESSENTRY32>() as u32,
@@ -32,23 +36,29 @@ pub fn get_pid(process_name: &str) -> process_memory::Pid {
         cntThreads: 0,
         th32ParentProcessID: 0,
         pcPriClassBase: 0,
-        dwFlags: 0, 
-        szExeFile: [0; winapi::shared::minwindef::MAX_PATH]
+        dwFlags: 0,
+        szExeFile: [0; winapi::shared::minwindef::MAX_PATH],
     };
     let snapshot: process_memory::ProcessHandle;
     unsafe {
-        snapshot = winapi::um::tlhelp32::CreateToolhelp32Snapshot(winapi::um::tlhelp32::TH32CS_SNAPPROCESS, 0); 
-        if winapi::um::tlhelp32::Process32First(snapshot, &mut entry) == winapi::shared::minwindef::TRUE {
-            while winapi::um::tlhelp32::Process32Next(snapshot, &mut entry) == winapi::shared::minwindef::TRUE { 
-                if utf8_to_string(&entry.szExeFile) == process_name { 
-                    return entry.th32ProcessID
+        snapshot = winapi::um::tlhelp32::CreateToolhelp32Snapshot(
+            winapi::um::tlhelp32::TH32CS_SNAPPROCESS,
+            0,
+        );
+        if winapi::um::tlhelp32::Process32First(snapshot, &mut entry)
+            == winapi::shared::minwindef::TRUE
+        {
+            while winapi::um::tlhelp32::Process32Next(snapshot, &mut entry)
+                == winapi::shared::minwindef::TRUE
+            {
+                if utf8_to_string(&entry.szExeFile) == process_name {
+                    return entry.th32ProcessID;
                 }
             }
         }
     }
     0
-} 
-
+}
 
 #[cfg(windows)]
 fn main() -> std::io::Result<()> {
@@ -61,8 +71,8 @@ fn main() -> std::io::Result<()> {
     let mut level_warmup = DataMember::<f32>::new(process_handle);
     level_warmup.set_offset(vec![0x1_42_14_2a_d8, 0x9c]);
 
-    let mut emitters_enabled = DataMember::<bool>::new(process_handle); 
-    emitters_enabled.set_offset(vec![0x1_42_3e_44_78, 0xac]); 
+    let mut emitters_enabled = DataMember::<bool>::new(process_handle);
+    emitters_enabled.set_offset(vec![0x1_42_3e_44_78, 0xac]);
 
     spawn_timer.write(&1.0)?;
     level_warmup.write(&1.0)?;

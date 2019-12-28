@@ -5,7 +5,7 @@
 //! ```rust
 //! # use process_memory::{Memory, DataMember, Pid, TryIntoProcessHandle};
 //! // We have a variable with some value
-//! let x = 4u32;
+//! let x = 4_u32;
 //! println!("Original x-value: {}", x);
 //!
 //! // We need to make sure that we get a handle to a process, in this case, ourselves
@@ -20,14 +20,14 @@
 //! println!("Member value: {}", member.read().unwrap());
 //! assert_eq!(x, member.read().unwrap());
 //! // We can write to and modify the value of the variable using the member
-//! member.write(&6u32).unwrap();
+//! member.write(&6_u32).unwrap();
 //! println!("New x-value: {}", x);
-//! assert_eq!(x, 6u32);
+//! assert_eq!(x, 6_u32);
 //! ```
 //! ```rust
 //! # use process_memory::{Memory, LocalMember};
 //! // We have a variable with some value
-//! let x = 4u32;
+//! let x = 4_u32;
 //! println!("Original x-value: {}", x);
 //!
 //! // We make a `LocalMember` that has an offset referring to its location in memory
@@ -40,9 +40,9 @@
 //! println!("Member value: {}", member.read().unwrap());
 //! assert_eq!(x, member.read().unwrap());
 //! // We can write to and modify the value of the variable using the member
-//! member.write(&6u32).unwrap();
+//! member.write(&6_u32).unwrap();
 //! println!("New x-value: {}", x);
-//! assert_eq!(x, 6u32);
+//! assert_eq!(x, 6_u32);
 //! ```
 #![deny(missing_docs)]
 #![deny(unused_results)]
@@ -51,6 +51,7 @@
 #![deny(rust_2018_idioms)]
 #![deny(bad_style)]
 #![deny(unused)]
+#![deny(clippy::pedantic)]
 
 mod data_member;
 mod local_member;
@@ -72,14 +73,14 @@ pub trait CopyAddress {
         // Look ma! No unsafes!
         let mut offset: usize = 0;
         let noffsets: usize = offsets.len();
-        for next_offset in offsets.iter().take(noffsets-1) {
-            offset +=  next_offset;
+        for next_offset in offsets.iter().take(noffsets - 1) {
+            offset += next_offset;
             let mut copy: [u8; std::mem::size_of::<usize>()] = [0; std::mem::size_of::<usize>()];
             self.copy_address(offset, &mut copy)?;
             offset = usize::from_ne_bytes(copy);
         }
 
-        offset += offsets[noffsets-1];
+        offset += offsets[noffsets - 1];
         Ok(offset)
     }
 }
@@ -115,11 +116,12 @@ impl TryIntoProcessHandle for ProcessHandle {
     }
 }
 
-/// A trait to check that a ProcessHandle it valid on various platforms.
-pub trait HandleChecker { 
-    /// Returns `true` if the ProcessHandle is not null, and `false` otherwise.
+/// A trait to check that a `ProcessHandle` it valid on various platforms.
+pub trait HandleChecker {
+    /// Returns `true` if the `ProcessHandle` is not null, and `false` otherwise.
     fn check_handle(&self) -> bool;
-    /// Return the null equivalent of a ProcessHandle.
+    /// Return the null equivalent of a `ProcessHandle`.
+    #[must_use]
     fn null_type() -> ProcessHandle;
 }
 
@@ -158,14 +160,14 @@ pub trait Memory<T> {
     fn write(&self, value: &T) -> std::io::Result<()>;
 }
 
-#[cfg(target_os="linux")]
+#[cfg(target_os = "linux")]
 mod platform {
     use libc;
 
-    use libc::{pid_t, c_void, iovec, process_vm_readv, process_vm_writev};
+    use libc::{c_void, iovec, pid_t, process_vm_readv, process_vm_writev};
     use std::process::Child;
 
-    use super::{CopyAddress, TryIntoProcessHandle, PutAddress, HandleChecker};
+    use super::{CopyAddress, HandleChecker, PutAddress, TryIntoProcessHandle};
 
     /// On Linux a `Pid` is just a `libc::pid_t`.
     pub type Pid = pid_t;
@@ -186,7 +188,7 @@ mod platform {
         fn try_into_process_handle(&self) -> std::io::Result<ProcessHandle> {
             Ok(self.id() as ProcessHandle)
         }
-    } 
+    }
 
     impl CopyAddress for ProcessHandle {
         fn copy_address(&self, addr: usize, buf: &mut [u8]) -> std::io::Result<()> {
@@ -198,9 +200,7 @@ mod platform {
                 iov_base: addr as *mut c_void,
                 iov_len: buf.len(),
             };
-            let result = unsafe {
-                process_vm_readv(*self, &local_iov, 1, &remote_iov, 1, 0)
-            };
+            let result = unsafe { process_vm_readv(*self, &local_iov, 1, &remote_iov, 1, 0) };
             if result == -1 {
                 Err(std::io::Error::last_os_error())
             } else {
@@ -209,7 +209,7 @@ mod platform {
         }
     }
 
-    impl PutAddress for ProcessHandle { 
+    impl PutAddress for ProcessHandle {
         fn put_address(&self, addr: usize, buf: &[u8]) -> std::io::Result<()> {
             let local_iov = iovec {
                 iov_base: buf.as_ptr() as *mut c_void,
@@ -219,9 +219,7 @@ mod platform {
                 iov_base: addr as *mut c_void,
                 iov_len: buf.len(),
             };
-            let result = unsafe {
-                process_vm_writev(*self, &local_iov, 1, &remote_iov, 1, 0)
-            };
+            let result = unsafe { process_vm_writev(*self, &local_iov, 1, &remote_iov, 1, 0) };
             if result == -1 {
                 Err(std::io::Error::last_os_error())
             } else {
@@ -231,24 +229,26 @@ mod platform {
     }
 }
 
-#[cfg(target_os="macos")]
+#[cfg(target_os = "macos")]
 mod platform {
-    use mach;
     use libc;
+    use mach;
 
-
-    use libc::{pid_t, c_int};
     use self::mach::kern_return::{kern_return_t, KERN_SUCCESS};
-    use self::mach::port::{mach_port_t, mach_port_name_t, MACH_PORT_NULL};
-    use self::mach::vm_types::{mach_vm_address_t, mach_vm_size_t, mach_vm_offset_t};
-    use self::mach::message::{mach_msg_type_number_t};
+    use self::mach::message::mach_msg_type_number_t;
+    use self::mach::port::{mach_port_name_t, mach_port_t, MACH_PORT_NULL};
+    use self::mach::vm_types::{mach_vm_address_t, mach_vm_offset_t, mach_vm_size_t};
+    use libc::{c_int, pid_t};
     use std::process::Child;
 
     use super::{CopyAddress, PutAddress, TryIntoProcessHandle};
 
-    #[allow(non_camel_case_types)] type vm_map_t = mach_port_t;
-    #[allow(non_camel_case_types)] type vm_address_t = mach_vm_address_t;
-    #[allow(non_camel_case_types)] type vm_size_t = mach_vm_size_t;
+    #[allow(non_camel_case_types)]
+    type vm_map_t = mach_port_t;
+    #[allow(non_camel_case_types)]
+    type vm_address_t = mach_vm_address_t;
+    #[allow(non_camel_case_types)]
+    type vm_size_t = mach_vm_size_t;
 
     /// On OS X a `Pid` is just a `libc::pid_t`.
     pub type Pid = pid_t;
@@ -262,13 +262,24 @@ mod platform {
         ///  - size: The number of bytes we want to read
         ///  - data: The local address to read into
         ///  - outsize: The actual size we read
-        fn vm_read_overwrite(target_task: vm_map_t, address: vm_address_t, size: vm_size_t, data: vm_address_t, outsize: &mut vm_size_t) -> kern_return_t;
+        fn vm_read_overwrite(
+            target_task: vm_map_t,
+            address: vm_address_t,
+            size: vm_size_t,
+            data: vm_address_t,
+            outsize: &mut vm_size_t,
+        ) -> kern_return_t;
         /// Parameters:
         ///  - target_task: The task to which we will write
         ///  - address: The address on the foreign task that we will write to
         ///  - data: The local address of the data we're putting in
         ///  - data_count: The number of bytes we are copying
-        fn mach_vm_write(target_task: vm_map_t, address: vm_address_t, data: mach_vm_offset_t, data_count: mach_msg_type_number_t) -> kern_return_t;
+        fn mach_vm_write(
+            target_task: vm_map_t,
+            address: vm_address_t,
+            data: mach_vm_offset_t,
+            data_count: mach_msg_type_number_t,
+        ) -> kern_return_t;
     }
 
     /// A small wrapper around `task_for_pid`, which taskes a pid returns the mach port representing its task.
@@ -276,9 +287,10 @@ mod platform {
         let mut task: mach_port_name_t = MACH_PORT_NULL;
 
         unsafe {
-            let result = mach::traps::task_for_pid(mach::traps::mach_task_self(), pid as c_int, &mut task);
+            let result =
+                mach::traps::task_for_pid(mach::traps::mach_task_self(), pid as c_int, &mut task);
             if result != KERN_SUCCESS {
-                return Err(std::io::Error::last_os_error())
+                return Err(std::io::Error::last_os_error());
             }
         }
 
@@ -311,11 +323,10 @@ mod platform {
     /// Here we use `mach_vm_write` to write a buffer to some arbitrary address on a process.
     impl PutAddress for ProcessHandle {
         fn put_address(&self, addr: usize, buf: &[u8]) -> std::io::Result<()> {
-            let result = unsafe {
-                mach_vm_write(*self, addr as _, buf.as_ptr() as _, buf.len() as _)
-            };
+            let result =
+                unsafe { mach_vm_write(*self, addr as _, buf.as_ptr() as _, buf.len() as _) };
             if result != KERN_SUCCESS {
-                return Err(std::io::Error::last_os_error())
+                return Err(std::io::Error::last_os_error());
             }
             Ok(())
         }
@@ -329,16 +340,28 @@ mod platform {
         fn copy_address(&self, addr: usize, buf: &mut [u8]) -> std::io::Result<()> {
             let mut read_len: u64 = 0;
             let result = unsafe {
-                vm_read_overwrite(*self, addr as _, buf.len() as _, buf.as_ptr() as _, &mut read_len)
+                vm_read_overwrite(
+                    *self,
+                    addr as _,
+                    buf.len() as _,
+                    buf.as_ptr() as _,
+                    &mut read_len,
+                )
             };
 
             if result != KERN_SUCCESS {
-                return Err(std::io::Error::last_os_error())
+                return Err(std::io::Error::last_os_error());
             }
 
             if read_len != buf.len() as _ {
-                Err(std::io::Error::new(std::io::ErrorKind::BrokenPipe,
-                        format!("Mismatched read sizes for `vm_read_overwrite` (expected {}, got {})", buf.len(), read_len)))
+                Err(std::io::Error::new(
+                    std::io::ErrorKind::BrokenPipe,
+                    format!(
+                        "Mismatched read sizes for `vm_read_overwrite` (expected {}, got {})",
+                        buf.len(),
+                        read_len
+                    ),
+                ))
             } else {
                 Ok(())
             }
@@ -356,7 +379,7 @@ mod platform {
     use std::process::Child;
     use std::ptr;
 
-    use super::{CopyAddress, TryIntoProcessHandle, PutAddress, HandleChecker};
+    use super::{CopyAddress, HandleChecker, PutAddress, TryIntoProcessHandle};
 
     /// On Windows a `Pid` is a `DWORD`.
     pub type Pid = minwindef::DWORD;
@@ -367,7 +390,8 @@ mod platform {
         fn check_handle(&self) -> bool {
             self.is_null()
         }
-        fn null_type() -> ProcessHandle { 
+        #[must_use]
+        fn null_type() -> ProcessHandle {
             ptr::null_mut()
         }
     }
@@ -375,7 +399,17 @@ mod platform {
     /// A `Pid` can be turned into a `ProcessHandle` with `OpenProcess`.
     impl TryIntoProcessHandle for minwindef::DWORD {
         fn try_into_process_handle(&self) -> std::io::Result<ProcessHandle> {
-            let handle = unsafe { winapi::um::processthreadsapi::OpenProcess(winapi::um::winnt::PROCESS_CREATE_THREAD | winapi::um::winnt::PROCESS_QUERY_INFORMATION | winapi::um::winnt::PROCESS_VM_READ | winapi::um::winnt::PROCESS_VM_WRITE | winapi::um::winnt::PROCESS_VM_OPERATION, winapi::shared::minwindef::FALSE, *self) };
+            let handle = unsafe {
+                winapi::um::processthreadsapi::OpenProcess(
+                    winapi::um::winnt::PROCESS_CREATE_THREAD
+                        | winapi::um::winnt::PROCESS_QUERY_INFORMATION
+                        | winapi::um::winnt::PROCESS_VM_READ
+                        | winapi::um::winnt::PROCESS_VM_WRITE
+                        | winapi::um::winnt::PROCESS_VM_OPERATION,
+                    winapi::shared::minwindef::FALSE,
+                    *self,
+                )
+            };
             if handle == (0 as ProcessHandle) {
                 Err(std::io::Error::last_os_error())
             } else {
@@ -398,11 +432,15 @@ mod platform {
                 return Ok(());
             }
 
-            if unsafe { winapi::um::memoryapi::ReadProcessMemory(*self,
-                addr as minwindef::LPVOID,
-                buf.as_mut_ptr() as minwindef::LPVOID,
-                mem::size_of_val(buf) as winapi::shared::basetsd::SIZE_T,
-                ptr::null_mut()) } == winapi::shared::minwindef::FALSE
+            if unsafe {
+                winapi::um::memoryapi::ReadProcessMemory(
+                    *self,
+                    addr as minwindef::LPVOID,
+                    buf.as_mut_ptr() as minwindef::LPVOID,
+                    mem::size_of_val(buf) as winapi::shared::basetsd::SIZE_T,
+                    ptr::null_mut(),
+                )
+            } == winapi::shared::minwindef::FALSE
             {
                 Err(std::io::Error::last_os_error())
             } else {
@@ -417,11 +455,15 @@ mod platform {
             if buf.is_empty() {
                 return Ok(());
             }
-            if unsafe { winapi::um::memoryapi::WriteProcessMemory(*self,
-                addr as minwindef::LPVOID,
-                buf.as_ptr() as minwindef::LPCVOID,
-                mem::size_of_val(buf) as winapi::shared::basetsd::SIZE_T,
-                ptr::null_mut()) } == winapi::shared::minwindef::FALSE
+            if unsafe {
+                winapi::um::memoryapi::WriteProcessMemory(
+                    *self,
+                    addr as minwindef::LPVOID,
+                    buf.as_ptr() as minwindef::LPCVOID,
+                    mem::size_of_val(buf) as winapi::shared::basetsd::SIZE_T,
+                    ptr::null_mut(),
+                )
+            } == winapi::shared::minwindef::FALSE
             {
                 Err(std::io::Error::last_os_error())
             } else {
@@ -436,7 +478,8 @@ mod platform {
 /// This is just a convenient way to call `CopyAddress::copy_address` without
 /// having to provide your own buffer.
 pub fn copy_address<T>(addr: usize, length: usize, source: &T) -> std::io::Result<Vec<u8>>
-where T: CopyAddress
+where
+    T: CopyAddress,
 {
     let mut copy = vec![0; length];
 
