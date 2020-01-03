@@ -56,7 +56,8 @@ impl TryIntoProcessHandle for Child {
 impl PutAddress for ProcessHandle {
     fn put_address(&self, addr: usize, buf: &[u8]) -> std::io::Result<()> {
         #[allow(clippy::cast_possible_truncation)]
-        let result = unsafe { mach::vm::mach_vm_write(*self, addr as _, buf.as_ptr() as _, buf.len() as _) };
+        let result =
+            unsafe { mach::vm::mach_vm_write(*self, addr as _, buf.as_ptr() as _, buf.len() as _) };
         if result != KERN_SUCCESS {
             return Err(std::io::Error::last_os_error());
         }
@@ -72,7 +73,13 @@ impl CopyAddress for ProcessHandle {
     fn copy_address(&self, addr: usize, buf: &mut [u8]) -> std::io::Result<()> {
         let mut read_len: u64 = 0;
         let result = unsafe {
-            mach::vm::mach_vm_read_overwrite(*self, addr as _, buf.len() as _, buf.as_ptr() as _, &mut read_len)
+            mach::vm::mach_vm_read_overwrite(
+                *self,
+                addr as _,
+                buf.len() as _,
+                buf.as_ptr() as _,
+                &mut read_len,
+            )
         };
 
         if result != KERN_SUCCESS {
