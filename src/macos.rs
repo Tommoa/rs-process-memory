@@ -1,53 +1,17 @@
 use libc;
 use mach;
 
-use self::mach::kern_return::{kern_return_t, KERN_SUCCESS};
-use self::mach::message::mach_msg_type_number_t;
-use self::mach::port::{mach_port_name_t, mach_port_t, MACH_PORT_NULL};
-use self::mach::vm_types::{mach_vm_address_t, mach_vm_offset_t, mach_vm_size_t};
+use self::mach::kern_return::KERN_SUCCESS;
+use self::mach::port::{mach_port_name_t, MACH_PORT_NULL};
 use libc::{c_int, pid_t};
 use std::process::Child;
 
 use super::{CopyAddress, PutAddress, TryIntoProcessHandle};
 
-#[allow(non_camel_case_types)]
-type vm_map_t = mach_port_t;
-#[allow(non_camel_case_types)]
-type vm_address_t = mach_vm_address_t;
-#[allow(non_camel_case_types)]
-type vm_size_t = mach_vm_size_t;
-
 /// On OS X a `Pid` is just a `libc::pid_t`.
 pub type Pid = pid_t;
 /// On OS X a `ProcessHandle` is a mach port.
 pub type ProcessHandle = mach_port_name_t;
-
-extern "C" {
-    /// Parameters
-    ///  - target_task: The task that we will read from
-    ///  - address: The address on the foreign task that we will read
-    ///  - size: The number of bytes we want to read
-    ///  - data: The local address to read into
-    ///  - outsize: The actual size we read
-    fn vm_read_overwrite(
-        target_task: vm_map_t,
-        address: vm_address_t,
-        size: vm_size_t,
-        data: vm_address_t,
-        outsize: &mut vm_size_t,
-    ) -> kern_return_t;
-    /// Parameters:
-    ///  - target_task: The task to which we will write
-    ///  - address: The address on the foreign task that we will write to
-    ///  - data: The local address of the data we're putting in
-    ///  - data_count: The number of bytes we are copying
-    fn mach_vm_write(
-        target_task: vm_map_t,
-        address: vm_address_t,
-        data: mach_vm_offset_t,
-        data_count: mach_msg_type_number_t,
-    ) -> kern_return_t;
-}
 
 /// A small wrapper around `task_for_pid`, which taskes a pid returns the mach port representing its task.
 fn task_for_pid(pid: Pid) -> std::io::Result<mach_port_name_t> {
@@ -92,7 +56,7 @@ impl TryIntoProcessHandle for Child {
 impl PutAddress for ProcessHandle {
     fn put_address(&self, addr: usize, buf: &[u8]) -> std::io::Result<()> {
         #[allow(clippy::cast_possible_truncation)]
-        let result = unsafe { mach_vm_write(*self, addr as _, buf.as_ptr() as _, buf.len() as _) };
+        let result = unsafe { mach::vm::mach_vm_write(*self, addr as _, buf.as_ptr() as _, buf.len() as _) };
         if result != KERN_SUCCESS {
             return Err(std::io::Error::last_os_error());
         }
@@ -108,13 +72,7 @@ impl CopyAddress for ProcessHandle {
     fn copy_address(&self, addr: usize, buf: &mut [u8]) -> std::io::Result<()> {
         let mut read_len: u64 = 0;
         let result = unsafe {
-            vm_read_overwrite(
-                *self,
-                addr as _,
-                buf.len() as _,
-                buf.as_ptr() as _,
-                &mut read_len,
-            )
+            mach::vm::mach_vm_read_overwrite(*self, addr as _, buf.len() as _, buf.as_ptr() as _, &mut read_len)
         };
 
         if result != KERN_SUCCESS {
