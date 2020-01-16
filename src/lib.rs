@@ -104,19 +104,26 @@ pub trait PutAddress {
 
 /// A `Pid` is a "process id". Each different platform has a different method for uniquely
 /// identifying a process. You can see what the Rust standard library uses for your platform by
-/// looking at [`std::process::id`].
+/// looking at `std::process::id`.
 pub use platform::Pid;
 /// A `ProcessHandle` is a variable type that allows for access to functions that can manipulate
 /// other processes. On platforms other than Linux, this is typically a different type than
 /// [`Pid`], and thus it is a distinct type here.
+///
+/// [`Pid`]: type.Pid.html
 pub use platform::ProcessHandle;
 
 /// A trait that attempts to turn some type into a [`ProcessHandle`] so memory can be either copied
 /// or placed into it.
+///
+/// [`ProcessHandle`]: type.ProcessHandle.html
 pub trait TryIntoProcessHandle {
     /// Attempt to turn a type into a [`ProcessHandle`]. Whilst Linux provides the same type for
     /// [`Pid`]s and [`ProcessHandle`]s, Windows and macOS do not. As such, you need to ensure that
     /// `try_into_process_handle` is called on all [`Pid`]s to ensure cross-platform capabilities.
+    ///
+    /// [`ProcessHandle`]: type.ProcessHandle.html
+    /// [`Pid`]: type.Pid.html
     fn try_into_process_handle(&self) -> std::io::Result<ProcessHandle>;
 }
 
@@ -148,25 +155,31 @@ pub trait Memory<T> {
     /// Gets the actual total offset from the offsets given by [`Memory::set_offset`].
     ///
     /// This function is safe because it should never internally allow for a null pointer
-    /// deference, and instead should return a [`std::io::Error`] with a [`std::io::ErrorKind`] of
+    /// deference, and instead should return a `std::io::Error` with a `std::io::ErrorKind` of
     /// `Other`.
+    ///
+    /// [`Memory::set_offset`]: trait.Memory.html#tymethod.set_offset
     fn get_offset(&self) -> std::io::Result<usize>;
 
     /// Reads the value of the pointer from the offsets given by [`Memory::set_offset`].
     ///
     /// This function is safe because it should never internally allow for a null pointer
-    /// deference, and instead should return a [`std::io::Error`] with a [`std::io::ErrorKind`] of
+    /// deference, and instead should return a `std::io::Error` with a `std::io::ErrorKind` of
     /// `Other`.
+    ///
+    /// [`Memory::set_offset`]: trait.Memory.html#tymethod.set_offset
     fn read(&self) -> std::io::Result<T>;
 
     /// Writes `value` to the pointer from the offsets given by [`Memory::set_offset`].
     ///
     /// This function is safe because it should never internally allow for a null pointer
-    /// deference, and instead should return a [`std::io::Error`] with a [`std::io::ErrorKind`] of
+    /// deference, and instead should return a `std::io::Error` with a `std::io::ErrorKind` of
     /// `Other`.
     ///
     /// This function takes a reference instead of taking ownership so if the caller passes in a
-    /// [String] or a [Vec], it does not have to be cloned.
+    /// `String` or a `Vec`, it does not have to be cloned.
+    ///
+    /// [`Memory::set_offset`]: trait.Memory.html#tymethod.set_offset
     fn write(&self, value: &T) -> std::io::Result<()>;
 }
 

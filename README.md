@@ -11,7 +11,7 @@ The current supported platforms are:
 
 ## Examples
 ```rust
-# use process_memory::{Memory, DataMember, Pid, TryIntoProcessHandle};
+use process_memory::{Memory, DataMember, Pid, TryIntoProcessHandle};
 // We have a variable with some value
 let x = 4_u32;
 println!("Original x-value: {}", x);
@@ -33,7 +33,7 @@ println!("New x-value: {}", x);
 assert_eq!(x, 6_u32);
 ```
 ```rust
-# use process_memory::{Memory, LocalMember};
+use process_memory::{Memory, LocalMember};
 // We have a variable with some value
 let x = 4_u32;
 println!("Original x-value: {}", x);

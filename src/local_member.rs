@@ -28,9 +28,14 @@ pub struct LocalMember<T> {
 
 impl<T: Sized + Copy> LocalMember<T> {
     /// Creates a new `LocalMember` with no offsets. Any calls to
-    /// [`Memory::read`](crate::Memory::read) will attempt to read from a null pointer reference.
-    /// To set offsets, use [`Memory::set_offset`](crate::Memory::set_offset), or create the
-    /// `LocalMember` using [`new_offset`](LocalMember::new_offset).
+    /// [`Memory::read`] will attempt to read from a null pointer reference.
+    ///
+    /// To set offsets, use [`Memory::set_offset`]offset), or create the `LocalMember` using
+    /// [`new_offset`].
+    ///
+    /// [`Memory::read`]: trait.Memory.html#tymethod.read
+    /// [`Memory::set_offset`]: trait.Memory.html#tymethod.set_offset
+    /// [`new_offset`]: struct.LocalMember.html#method.new_offset
     #[must_use]
     pub fn new() -> Self {
         Self {

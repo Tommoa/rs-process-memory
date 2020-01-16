@@ -36,15 +36,6 @@ impl TryIntoProcessHandle for Pid {
 }
 
 /// This `TryIntoProcessHandle` impl simply calls the `TryIntoProcessHandle` impl for `Pid`.
-///
-/// Unfortunately spawning a process on OS X does not hand back a mach
-/// port by default (you have to jump through several hoops to get at it),
-/// so there's no simple implementation of `TryIntoProcessHandle` for
-/// `std::process::Child`. This implementation is just provided for symmetry
-/// with other platforms to make writing cross-platform code easier.
-///
-/// Ideally we would provide an implementation of `std::process::Command::spawn`
-/// that jumped through those hoops and provided the task port.
 impl TryIntoProcessHandle for Child {
     fn try_into_process_handle(&self) -> std::io::Result<ProcessHandle> {
         #[allow(clippy::cast_possible_wrap)]

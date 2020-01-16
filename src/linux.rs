@@ -21,7 +21,7 @@ impl HandleChecker for ProcessHandle {
     }
 }
 
-/// A [`Child`] always has a pid, which is all we need on Linux.
+/// A `Child` always has a pid, which is all we need on Linux.
 impl TryIntoProcessHandle for Child {
     fn try_into_process_handle(&self) -> std::io::Result<ProcessHandle> {
         #[allow(clippy::cast_possible_wrap)]

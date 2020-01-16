@@ -36,12 +36,18 @@ pub struct DataMember<T> {
 
 impl<T: Sized + Copy> DataMember<T> {
     /// Create a new `DataMember` from a [`ProcessHandle`]. You must remember to call
-    /// [`try_into_process_handle`](crate::TryIntoProcessHandle::try_into_process_handle) on a
-    /// [`crate::Pid`], because the types may be elided, resulting in an error.
+    /// [`try_into_process_handle`] on a [`Pid`], because the types may have the same backing type,
+    /// resulting in errors when called with the wrong value.
     ///
     /// By default, there will be no offsets, leading to an error when attempting to call
     /// [`Memory::read`], so you will likely need to call [`Memory::set_offset`] before attempting
     /// any reads.
+    ///
+    /// [`try_into_process_handle`]: trait.TryIntoProcessHandle.html#tymethod.try_into_process_handle
+    /// [`ProcessHandle`]: type.ProcessHandle.html
+    /// [`Pid`]: type.Pid.html
+    /// [`Memory::read`]: trait.Memory.html#tymethod.read
+    /// [`Memory::set_offset`]: trait.Memory.html#tymethod.set_offset
     #[must_use]
     pub fn new(handle: ProcessHandle) -> Self {
         Self {
@@ -52,10 +58,12 @@ impl<T: Sized + Copy> DataMember<T> {
     }
 
     /// Create a new `DataMember` from a [`ProcessHandle`] and some number of offsets. You must
-    /// remember to call
-    /// [`try_into_process_handle`](crate::TryIntoProcessHandle::try_into_process_handle) on a
-    /// [`Pid`](crate::Pid) as sometimes the `Pid` can have the same backing type as a
-    /// [`ProcessHandle`](crate::ProcessHandle), resulting in an error.
+    /// remember to call [`try_into_process_handle`] on a [`Pid`] as sometimes the `Pid` can have
+    /// the same backing type as a [`ProcessHandle`], resulting in an error.
+    ///
+    /// [`try_into_process_handle`]: trait.TryIntoProcessHandle.html#tymethod.try_into_process_handle
+    /// [`ProcessHandle`]: type.ProcessHandle.html
+    /// [`Pid`]: type.Pid.html
     #[must_use]
     pub fn new_offset(handle: ProcessHandle, offsets: Vec<usize>) -> Self {
         Self {
