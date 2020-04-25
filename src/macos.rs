@@ -61,7 +61,7 @@ impl PutAddress for ProcessHandle {
 /// We use `vm_read_overwrite` instead of `vm_read` because it can handle non-aligned reads and
 /// won't read an entire page.
 impl CopyAddress for ProcessHandle {
-    fn copy_address(&self, addr: usize, buf: &mut Vec<u8>) -> std::io::Result<()> {
+    fn copy_address(&self, addr: usize, buf: &mut [u8]) -> std::io::Result<()> {
         let mut read_len: u64 = 0;
         let result = unsafe {
             mach::vm::mach_vm_read_overwrite(
