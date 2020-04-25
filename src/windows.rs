@@ -54,7 +54,7 @@ impl TryIntoProcessHandle for Child {
 
 /// Use `ReadProcessMemory` to read memory from another process on Windows.
 impl CopyAddress for ProcessHandle {
-    fn copy_address(&self, addr: usize, buf: &mut [u8]) -> std::io::Result<()> {
+    fn copy_address(&self, addr: usize, buf: &mut Vec<u8>) -> std::io::Result<()> {
         if buf.is_empty() {
             return Ok(());
         }
@@ -64,7 +64,7 @@ impl CopyAddress for ProcessHandle {
                 *self,
                 addr as minwindef::LPVOID,
                 buf.as_mut_ptr() as minwindef::LPVOID,
-                mem::size_of_val(buf) as winapi::shared::basetsd::SIZE_T,
+                buf.len() as winapi::shared::basetsd::SIZE_T,
                 ptr::null_mut(),
             )
         } == winapi::shared::minwindef::FALSE

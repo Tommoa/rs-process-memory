@@ -31,6 +31,7 @@ use crate::{CopyAddress, Memory, ProcessHandle, PutAddress};
 pub struct DataMember<T> {
     offsets: Vec<usize>,
     process: ProcessHandle,
+    arch: usize,
     _phantom: std::marker::PhantomData<*mut T>,
 }
 
@@ -53,6 +54,7 @@ impl<T: Sized + Copy> DataMember<T> {
         Self {
             offsets: Vec::new(),
             process: handle,
+            arch: std::mem::size_of::<usize>() * 8,
             _phantom: std::marker::PhantomData,
         }
     }
@@ -69,8 +71,20 @@ impl<T: Sized + Copy> DataMember<T> {
         Self {
             offsets,
             process: handle,
+            arch: std::mem::size_of::<usize>() * 8,
             _phantom: std::marker::PhantomData,
         }
+    }
+
+    /// Sets the architecture of the DataMember.
+    ///
+    /// This can be used for reading memory offsets of programs that are of
+    /// different architectures to the host program.
+    /// This defaults to the architecture of the host program.
+    pub fn set_arch(mut self, arch: usize) -> Self {
+        assert!(arch == 32 || arch == 64);
+        self.arch = arch;
+        self
     }
 }
 
@@ -80,11 +94,11 @@ impl<T: Sized + Copy> Memory<T> for DataMember<T> {
     }
 
     fn get_offset(&self) -> std::io::Result<usize> {
-        self.process.get_offset(&self.offsets)
+        self.process.get_offset(&self.offsets, &self.arch)
     }
 
     fn read(&self) -> std::io::Result<T> {
-        let offset = self.process.get_offset(&self.offsets)?;
+        let offset = self.process.get_offset(&self.offsets, &self.arch)?;
         // This can't be [0_u8;size_of::<T>()] because no const generics.
         // It will be freed at the end of the function because no references are held to it.
         let mut buffer = vec![0_u8; std::mem::size_of::<T>()];
@@ -94,7 +108,7 @@ impl<T: Sized + Copy> Memory<T> for DataMember<T> {
 
     fn write(&self, value: &T) -> std::io::Result<()> {
         use std::slice;
-        let offset = self.process.get_offset(&self.offsets)?;
+        let offset = self.process.get_offset(&self.offsets, &self.arch)?;
         let buffer: &[u8] =
             unsafe { slice::from_raw_parts(value as *const _ as _, std::mem::size_of::<T>()) };
         self.process.put_address(offset, &buffer)

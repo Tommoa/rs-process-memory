@@ -53,6 +53,8 @@
 #![deny(unused)]
 #![deny(clippy::pedantic)]
 
+use std::convert::TryInto;
+
 mod data_member;
 mod local_member;
 
@@ -73,21 +75,22 @@ mod platform;
 /// type into a buffer.
 pub trait CopyAddress {
     /// Copy an address into user-defined buffer.
-    fn copy_address(&self, addr: usize, buf: &mut [u8]) -> std::io::Result<()>;
+    fn copy_address(&self, addr: usize, buf: &mut Vec<u8>) -> std::io::Result<()>;
 
     /// Get the actual memory location from a set of offsets.
     ///
     /// If [`copy_address`] is already defined, then we can provide a standard implementation that
     /// will work across all operating systems.
-    fn get_offset(&self, offsets: &[usize]) -> std::io::Result<usize> {
+    fn get_offset(&self, offsets: &[usize], arch: &usize) -> std::io::Result<usize> {
         // Look ma! No unsafes!
         let mut offset: usize = 0;
         let noffsets: usize = offsets.len();
         for next_offset in offsets.iter().take(noffsets - 1) {
             offset += next_offset;
-            let mut copy: [u8; std::mem::size_of::<usize>()] = [0; std::mem::size_of::<usize>()];
+            let mut copy: Vec<u8> = vec![0; arch / 8];
             self.copy_address(offset, &mut copy)?;
-            offset = usize::from_ne_bytes(copy);
+            copy.resize(std::mem::size_of::<usize>(), 0);
+            offset = usize::from_ne_bytes(copy.as_slice().try_into().unwrap());
         }
 
         offset += offsets[noffsets - 1];
