@@ -1,7 +1,6 @@
 use winapi;
 use winapi::shared::minwindef;
 
-use std::mem;
 use std::os::windows::io::AsRawHandle;
 use std::process::Child;
 use std::ptr;
@@ -64,7 +63,7 @@ impl CopyAddress for ProcessHandle {
                 *self,
                 addr as minwindef::LPVOID,
                 buf.as_mut_ptr() as minwindef::LPVOID,
-                mem::size_of_val(buf) as winapi::shared::basetsd::SIZE_T,
+                buf.len() as winapi::shared::basetsd::SIZE_T,
                 ptr::null_mut(),
             )
         } == winapi::shared::minwindef::FALSE
@@ -87,7 +86,7 @@ impl PutAddress for ProcessHandle {
                 *self,
                 addr as minwindef::LPVOID,
                 buf.as_ptr() as minwindef::LPCVOID,
-                mem::size_of_val(buf) as winapi::shared::basetsd::SIZE_T,
+                buf.len() as winapi::shared::basetsd::SIZE_T,
                 ptr::null_mut(),
             )
         } == winapi::shared::minwindef::FALSE

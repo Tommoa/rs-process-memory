@@ -68,7 +68,7 @@ impl CopyAddress for ProcessHandle {
                 *self,
                 addr as _,
                 buf.len() as _,
-                buf.as_ptr() as _,
+                buf.as_mut_ptr() as _,
                 &mut read_len,
             )
         };

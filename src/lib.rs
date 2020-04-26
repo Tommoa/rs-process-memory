@@ -44,6 +44,25 @@
 //! println!("New x-value: {}", x);
 //! assert_eq!(x, 6_u32);
 //! ```
+//! ```no_run
+//! # use process_memory::{Memory, DataMember, Pid, TryIntoProcessHandle, Architecture};
+//! # fn get_pid(process_name: &str) -> Pid {
+//! #     std::process::id() as Pid
+//! # }
+//! // We get a handle for a target process with a different architecture to ourselves
+//! let handle = get_pid("32Bit.exe").try_into_process_handle().unwrap();
+//! // We make a `DataMember` that has a series of offsets refering to a known value in
+//! // the target processes memory
+//! let member = DataMember::new_offset(handle, vec![0x01_02_03_04, 0x04, 0x08, 0x10])
+//! // We tell the `DataMember` that the process is a 32 bit process, and thus it should
+//! // use 32 bit pointers while traversing offsets
+//!     .set_arch(Architecture::Arch32Bit);
+//! // The memory offset can now be correctly calculated:
+//! println!("Target memory location: {}", member.get_offset().unwrap());
+//! // The memory offset can now be used to retrieve and modify values:
+//! println!("Current value: {}", member.read().unwrap());
+//! member.write(&123_u32).unwrap();
+//! ```
 #![deny(missing_docs)]
 #![deny(unused_results)]
 #![deny(unreachable_pub)]
@@ -53,9 +72,11 @@
 #![deny(unused)]
 #![deny(clippy::pedantic)]
 
+mod architecture;
 mod data_member;
 mod local_member;
 
+pub use architecture::Architecture;
 pub use data_member::DataMember;
 pub use local_member::LocalMember;
 
@@ -79,15 +100,15 @@ pub trait CopyAddress {
     ///
     /// If [`copy_address`] is already defined, then we can provide a standard implementation that
     /// will work across all operating systems.
-    fn get_offset(&self, offsets: &[usize]) -> std::io::Result<usize> {
+    fn get_offset(&self, offsets: &[usize], arch: Architecture) -> std::io::Result<usize> {
         // Look ma! No unsafes!
         let mut offset: usize = 0;
         let noffsets: usize = offsets.len();
+        let mut copy = vec![0_u8; arch as usize];
         for next_offset in offsets.iter().take(noffsets - 1) {
             offset += next_offset;
-            let mut copy: [u8; std::mem::size_of::<usize>()] = [0; std::mem::size_of::<usize>()];
             self.copy_address(offset, &mut copy)?;
-            offset = usize::from_ne_bytes(copy);
+            offset = arch.pointer_from_ne_bytes(&copy);
         }
 
         offset += offsets[noffsets - 1];
