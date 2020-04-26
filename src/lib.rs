@@ -94,12 +94,18 @@ mod platform;
 /// type into a buffer.
 pub trait CopyAddress {
     /// Copy an address into user-defined buffer.
+    ///
+    /// # Errors
+    /// `std::io::Error` if an error occurs copying the address.
     fn copy_address(&self, addr: usize, buf: &mut [u8]) -> std::io::Result<()>;
 
     /// Get the actual memory location from a set of offsets.
     ///
     /// If [`copy_address`] is already defined, then we can provide a standard implementation that
     /// will work across all operating systems.
+    ///
+    /// # Errors
+    /// `std::io::Error` if an error occurs copying the address.
     fn get_offset(&self, offsets: &[usize], arch: Architecture) -> std::io::Result<usize> {
         // Look ma! No unsafes!
         let mut offset: usize = 0;
@@ -120,6 +126,9 @@ pub trait CopyAddress {
 /// represented by a type.
 pub trait PutAddress {
     /// Put the data from a user-defined buffer at an address.
+    ///
+    /// # Errors
+    /// `std::io::Error` if an error occurs copying the address.
     fn put_address(&self, addr: usize, buf: &[u8]) -> std::io::Result<()>;
 }
 
@@ -142,6 +151,9 @@ pub trait TryIntoProcessHandle {
     /// Attempt to turn a type into a [`ProcessHandle`]. Whilst Linux provides the same type for
     /// [`Pid`]s and [`ProcessHandle`]s, Windows and macOS do not. As such, you need to ensure that
     /// `try_into_process_handle` is called on all [`Pid`]s to ensure cross-platform capabilities.
+    ///
+    /// # Errors
+    /// Returns an error if the type cannot be turned into a [`ProcessHandle`]
     ///
     /// [`ProcessHandle`]: type.ProcessHandle.html
     /// [`Pid`]: type.Pid.html
@@ -179,6 +191,10 @@ pub trait Memory<T> {
     /// deference, and instead should return a `std::io::Error` with a `std::io::ErrorKind` of
     /// `Other`.
     ///
+    /// # Errors
+    /// Returns an error if copying memory fails or if a null pointer dereference would
+    /// otherwise occur.
+    ///
     /// [`Memory::set_offset`]: trait.Memory.html#tymethod.set_offset
     fn get_offset(&self) -> std::io::Result<usize>;
 
@@ -187,6 +203,10 @@ pub trait Memory<T> {
     /// This function is safe because it should never internally allow for a null pointer
     /// deference, and instead should return a `std::io::Error` with a `std::io::ErrorKind` of
     /// `Other`.
+    ///
+    /// # Errors
+    /// Returns an error if copying memory fails or if a null pointer dereference would
+    /// otherwise occur.
     ///
     /// [`Memory::set_offset`]: trait.Memory.html#tymethod.set_offset
     fn read(&self) -> std::io::Result<T>;
@@ -200,6 +220,10 @@ pub trait Memory<T> {
     /// This function takes a reference instead of taking ownership so if the caller passes in a
     /// `String` or a `Vec`, it does not have to be cloned.
     ///
+    /// # Errors
+    /// Returns an error if copying memory fails or if a null pointer dereference would
+    /// otherwise occur.
+    ///
     /// [`Memory::set_offset`]: trait.Memory.html#tymethod.set_offset
     fn write(&self, value: &T) -> std::io::Result<()>;
 }
@@ -208,6 +232,9 @@ pub trait Memory<T> {
 ///
 /// This is just a convenient way to call `CopyAddress::copy_address` without
 /// having to provide your own buffer.
+///
+/// # Errors
+/// Returns an error if copying memory fails
 pub fn copy_address<T>(addr: usize, length: usize, source: &T) -> std::io::Result<Vec<u8>>
 where
     T: CopyAddress,

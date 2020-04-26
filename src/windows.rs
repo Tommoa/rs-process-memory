@@ -1,4 +1,3 @@
-use winapi;
 use winapi::shared::minwindef;
 
 use std::os::windows::io::AsRawHandle;

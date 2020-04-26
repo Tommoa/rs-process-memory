@@ -95,11 +95,12 @@ impl<T: Sized + Copy> DataMember<T> {
         }
     }
 
-    /// Sets the architecture of the DataMember.
+    /// Sets the architecture of the `DataMember`.
     ///
     /// This can be used for reading memory offsets of programs that are of
     /// different architectures to the host program.
     /// This defaults to the architecture of the host program.
+    #[must_use]
     pub fn set_arch(mut self, arch: Architecture) -> Self {
         self.arch = arch;
         self

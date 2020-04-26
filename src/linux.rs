@@ -1,5 +1,3 @@
-use libc;
-
 use libc::{c_void, iovec, pid_t, process_vm_readv, process_vm_writev};
 use std::process::Child;
 

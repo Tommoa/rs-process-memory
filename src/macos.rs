@@ -1,9 +1,6 @@
-use libc;
-use mach;
-
-use self::mach::kern_return::KERN_SUCCESS;
-use self::mach::port::{mach_port_name_t, MACH_PORT_NULL};
 use libc::{c_int, pid_t};
+use mach::kern_return::KERN_SUCCESS;
+use mach::port::{mach_port_name_t, MACH_PORT_NULL};
 use std::process::Child;
 
 use super::{CopyAddress, PutAddress, TryIntoProcessHandle};
