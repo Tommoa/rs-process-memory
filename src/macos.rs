@@ -3,12 +3,27 @@ use mach::kern_return::KERN_SUCCESS;
 use mach::port::{mach_port_name_t, MACH_PORT_NULL};
 use std::process::Child;
 
-use super::{CopyAddress, PutAddress, TryIntoProcessHandle};
+use super::{Architecture, CopyAddress, ProcessHandleExt, PutAddress, TryIntoProcessHandle};
 
 /// On OS X a `Pid` is just a `libc::pid_t`.
 pub type Pid = pid_t;
 /// On OS X a `ProcessHandle` is a mach port.
-pub type ProcessHandle = mach_port_name_t;
+pub type ProcessHandle = (mach_port_name_t, Architecture);
+
+impl ProcessHandleExt for ProcessHandle {
+    #[must_use]
+    fn check_handle(&self) -> bool {
+        self.0 != 0
+    }
+    #[must_use]
+    fn null_type() -> ProcessHandle {
+        (0, Architecture::from_native())
+    }
+    #[must_use]
+    fn set_arch(self, arch: Architecture) -> Self {
+        (self.0, arch)
+    }
+}
 
 /// A small wrapper around `task_for_pid`, which taskes a pid returns the mach port representing its task.
 fn task_for_pid(pid: Pid) -> std::io::Result<mach_port_name_t> {
@@ -28,7 +43,7 @@ fn task_for_pid(pid: Pid) -> std::io::Result<mach_port_name_t> {
 /// `Pid` can be turned into a `ProcessHandle` with `task_for_pid`.
 impl TryIntoProcessHandle for Pid {
     fn try_into_process_handle(&self) -> std::io::Result<ProcessHandle> {
-        task_for_pid(*self)
+        Ok((task_for_pid(*self)?, Architecture::from_native()))
     }
 }
 
@@ -44,8 +59,9 @@ impl TryIntoProcessHandle for Child {
 impl PutAddress for ProcessHandle {
     fn put_address(&self, addr: usize, buf: &[u8]) -> std::io::Result<()> {
         #[allow(clippy::cast_possible_truncation)]
-        let result =
-            unsafe { mach::vm::mach_vm_write(*self, addr as _, buf.as_ptr() as _, buf.len() as _) };
+        let result = unsafe {
+            mach::vm::mach_vm_write(self.0, addr as _, buf.as_ptr() as _, buf.len() as _)
+        };
         if result != KERN_SUCCESS {
             return Err(std::io::Error::last_os_error());
         }
@@ -58,11 +74,17 @@ impl PutAddress for ProcessHandle {
 /// We use `vm_read_overwrite` instead of `vm_read` because it can handle non-aligned reads and
 /// won't read an entire page.
 impl CopyAddress for ProcessHandle {
+    #[allow(clippy::inline_always)]
+    #[inline(always)]
+    fn get_pointer_width(&self) -> Architecture {
+        self.1
+    }
+
     fn copy_address(&self, addr: usize, buf: &mut [u8]) -> std::io::Result<()> {
         let mut read_len: u64 = 0;
         let result = unsafe {
             mach::vm::mach_vm_read_overwrite(
-                *self,
+                self.0,
                 addr as _,
                 buf.len() as _,
                 buf.as_mut_ptr() as _,

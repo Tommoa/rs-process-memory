@@ -39,7 +39,7 @@ pub fn get_pid(process_name: &str) -> process_memory::Pid {
         dwFlags: 0,
         szExeFile: [0; winapi::shared::minwindef::MAX_PATH],
     };
-    let snapshot: process_memory::ProcessHandle;
+    let snapshot: winapi::um::winnt::HANDLE;
     unsafe {
         snapshot = winapi::um::tlhelp32::CreateToolhelp32Snapshot(
             winapi::um::tlhelp32::TH32CS_SNAPPROCESS,

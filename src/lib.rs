@@ -1,5 +1,9 @@
-//! This crate provides tools for working with the raw memory of programs, whether that be the
-//! implemented by the user.
+//! This crate provides tools for working with the raw memory of programs.
+//!
+//! Some examples of use cases for this tool are:
+//!  - Remote debugging tools
+//!  - Game "trainers"
+//!  - Rust clones of Cheat Engine
 //!
 //! ## Examples
 //! ```rust
@@ -45,18 +49,16 @@
 //! assert_eq!(x, 6_u32);
 //! ```
 //! ```no_run
-//! # use process_memory::{Memory, DataMember, Pid, TryIntoProcessHandle, Architecture};
+//! # use process_memory::{Architecture, Memory, DataMember, Pid, ProcessHandleExt, TryIntoProcessHandle};
 //! # fn get_pid(process_name: &str) -> Pid {
 //! #     std::process::id() as Pid
 //! # }
 //! // We get a handle for a target process with a different architecture to ourselves
-//! let handle = get_pid("32Bit.exe").try_into_process_handle().unwrap();
+//! let handle = get_pid("32Bit.exe").try_into_process_handle().unwrap()
+//!     .set_arch(Architecture::Arch32Bit);
 //! // We make a `DataMember` that has a series of offsets refering to a known value in
 //! // the target processes memory
-//! let member = DataMember::new_offset(handle, vec![0x01_02_03_04, 0x04, 0x08, 0x10])
-//! // We tell the `DataMember` that the process is a 32 bit process, and thus it should
-//! // use 32 bit pointers while traversing offsets
-//!     .set_arch(Architecture::Arch32Bit);
+//! let member = DataMember::new_offset(handle, vec![0x01_02_03_04, 0x04, 0x08, 0x10]);
 //! // The memory offset can now be correctly calculated:
 //! println!("Target memory location: {}", member.get_offset().unwrap());
 //! // The memory offset can now be used to retrieve and modify values:
@@ -101,25 +103,35 @@ pub trait CopyAddress {
 
     /// Get the actual memory location from a set of offsets.
     ///
-    /// If [`copy_address`] is already defined, then we can provide a standard implementation that
-    /// will work across all operating systems.
+    /// If [`copy_address`] and [`get_pointer_width`] are already defined, then
+    /// we can provide a standard implementation that will work across all
+    /// operating systems.
     ///
     /// # Errors
     /// `std::io::Error` if an error occurs copying the address.
-    fn get_offset(&self, offsets: &[usize], arch: Architecture) -> std::io::Result<usize> {
+    fn get_offset(&self, offsets: &[usize]) -> std::io::Result<usize> {
         // Look ma! No unsafes!
         let mut offset: usize = 0;
         let noffsets: usize = offsets.len();
-        let mut copy = vec![0_u8; arch as usize];
+        let mut copy = vec![0_u8; self.get_pointer_width() as usize];
         for next_offset in offsets.iter().take(noffsets - 1) {
             offset += next_offset;
             self.copy_address(offset, &mut copy)?;
-            offset = arch.pointer_from_ne_bytes(&copy);
+            offset = self.get_pointer_width().pointer_from_ne_bytes(&copy);
         }
 
         offset += offsets[noffsets - 1];
         Ok(offset)
     }
+
+    /// Get the the pointer width of the underlying process.
+    /// This is required for [`get_offset`] to work.
+    ///
+    /// # Performance
+    /// Any implementation of this function should be marked with
+    /// `#[inline(always)]` as this function is *very* commonly called and
+    /// should be inlined.
+    fn get_pointer_width(&self) -> Architecture;
 }
 
 /// A trait that defines that it is possible to put a buffer into the memory of something
@@ -166,13 +178,16 @@ impl TryIntoProcessHandle for ProcessHandle {
     }
 }
 
-/// A trait to check that a `ProcessHandle` it valid on various platforms.
-pub trait HandleChecker {
+/// Additional functions on process handles
+pub trait ProcessHandleExt {
     /// Returns `true` if the `ProcessHandle` is not null, and `false` otherwise.
     fn check_handle(&self) -> bool;
     /// Return the null equivalent of a `ProcessHandle`.
     #[must_use]
     fn null_type() -> ProcessHandle;
+    /// Set this handle to use some architecture
+    #[must_use]
+    fn set_arch(self, arch: Architecture) -> Self;
 }
 
 /// A trait that refers to and allows writing to a region of memory in a running program.

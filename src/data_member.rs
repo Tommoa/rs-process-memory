@@ -1,4 +1,4 @@
-use crate::{Architecture, CopyAddress, Memory, ProcessHandle, PutAddress};
+use crate::{CopyAddress, Memory, ProcessHandle, PutAddress};
 
 /// # Tools for working with memory of other programs
 /// This module provides functions for modifying the memory of a program from outside of the
@@ -27,30 +27,10 @@ use crate::{Architecture, CopyAddress, Memory, ProcessHandle, PutAddress};
 /// println!("New x-value: {}", x);
 /// assert_eq!(x, 6u32);
 /// ```
-/// ```no_run
-/// # use process_memory::{Memory, DataMember, Pid, TryIntoProcessHandle, Architecture};
-/// # fn get_pid(process_name: &str) -> Pid {
-/// #     std::process::id() as Pid
-/// # }
-/// // We get a handle for a target process with a different architecture to ourselves
-/// let handle = get_pid("32Bit.exe").try_into_process_handle().unwrap();
-/// // We make a `DataMember` that has a series of offsets refering to a known value in
-/// // the target processes memory
-/// let member = DataMember::new_offset(handle, vec![0x01_02_03_04, 0x04, 0x08, 0x10])
-/// // We tell the `DataMember` that the process is a 32 bit process, and thus it should
-/// // use 32 bit pointers while traversing offsets
-///     .set_arch(Architecture::Arch32Bit);
-/// // The memory offset can now be correctly calculated:
-/// println!("Target memory location: {}", member.get_offset().unwrap());
-/// // The memory offset can now be used to retrieve and modify values:
-/// println!("Current value: {}", member.read().unwrap());
-/// member.write(&123_u32).unwrap();
-/// ```
 #[derive(Clone, Debug)]
 pub struct DataMember<T> {
     offsets: Vec<usize>,
     process: ProcessHandle,
-    arch: Architecture,
     _phantom: std::marker::PhantomData<*mut T>,
 }
 
@@ -73,7 +53,6 @@ impl<T: Sized + Copy> DataMember<T> {
         Self {
             offsets: Vec::new(),
             process: handle,
-            arch: Architecture::from_native(),
             _phantom: std::marker::PhantomData,
         }
     }
@@ -90,20 +69,8 @@ impl<T: Sized + Copy> DataMember<T> {
         Self {
             offsets,
             process: handle,
-            arch: Architecture::from_native(),
             _phantom: std::marker::PhantomData,
         }
-    }
-
-    /// Sets the architecture of the `DataMember`.
-    ///
-    /// This can be used for reading memory offsets of programs that are of
-    /// different architectures to the host program.
-    /// This defaults to the architecture of the host program.
-    #[must_use]
-    pub fn set_arch(mut self, arch: Architecture) -> Self {
-        self.arch = arch;
-        self
     }
 }
 
@@ -113,11 +80,11 @@ impl<T: Sized + Copy> Memory<T> for DataMember<T> {
     }
 
     fn get_offset(&self) -> std::io::Result<usize> {
-        self.process.get_offset(&self.offsets, self.arch)
+        self.process.get_offset(&self.offsets)
     }
 
     fn read(&self) -> std::io::Result<T> {
-        let offset = self.process.get_offset(&self.offsets, self.arch)?;
+        let offset = self.process.get_offset(&self.offsets)?;
         // This can't be [0_u8;size_of::<T>()] because no const generics.
         // It will be freed at the end of the function because no references are held to it.
         let mut buffer = vec![0_u8; std::mem::size_of::<T>()];
@@ -127,7 +94,7 @@ impl<T: Sized + Copy> Memory<T> for DataMember<T> {
 
     fn write(&self, value: &T) -> std::io::Result<()> {
         use std::slice;
-        let offset = self.process.get_offset(&self.offsets, self.arch)?;
+        let offset = self.process.get_offset(&self.offsets)?;
         let buffer: &[u8] =
             unsafe { slice::from_raw_parts(value as *const _ as _, std::mem::size_of::<T>()) };
         self.process.put_address(offset, &buffer)

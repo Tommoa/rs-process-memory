@@ -1,10 +1,9 @@
 use crate::Memory;
 
-/// # Tools for working with local memory
-/// This module provides functions for modifying the memory of a program from within the address
+/// This struct provides functions for modifying the memory of a program from within the address
 /// space of that program. This may be helpful for debug functions, or for an injected DLL.
 ///
-/// Examples:
+/// # Examples:
 /// ```rust
 /// # use process_memory::{Memory, LocalMember};
 /// // We have a variable with some value
@@ -20,6 +19,19 @@ use crate::Memory;
 /// member.write(&6u32).unwrap();
 /// assert_eq!(x, 6u32);
 /// ```
+///
+/// # Safety
+///
+/// These functions are technically ***not safe***. Do not attempt to read or write to any local
+/// memory that you do not know is correct. If you're trying to explore your entire address space
+/// or are testing to see if a pointer is allocated to you, use [`DataMember`] with your own PID.
+///
+/// Unfortunately it's not possible to implement some traits safely (e.g. [`Memory`] on
+/// [`DataMember`] but implement it on other structures unsafely in Rust.
+///
+/// The implemented functions try to stop you from shooting yourself in the foot by checking none
+/// of the pointers end up at the null pointer, but this does not guarantee that you won't be able
+/// to mess something up really badly in your program.
 #[derive(Clone, Debug, Default)]
 pub struct LocalMember<T> {
     offsets: Vec<usize>,
@@ -79,7 +91,8 @@ impl<T: Sized + Copy> Memory<T> for LocalMember<T> {
         Ok(offset.wrapping_add(self.offsets[self.offsets.len() - 1]))
     }
 
-    /// This will only return a error if one of the offsets gives a null pointer.
+    /// This will only return a error if one of the offsets gives a null pointer. or give a
+    /// non-aligned read
     fn read(&self) -> std::io::Result<T> {
         let offset = self.get_offset()? as *const T;
         // Read the value of the pointer. We can't guarantee alignment, so this
