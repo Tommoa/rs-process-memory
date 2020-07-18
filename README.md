@@ -1,6 +1,7 @@
 # process-memory
 [![](https://img.shields.io/crates/v/process-memory.svg)](https://crates.io/crates/process-memory)
 [![](https://docs.rs/process-memory/badge.svg)](https://docs.rs/process-memory)
+![Continuous Integration](https://github.com/Tommoa/rs-process-memory/workflows/Continuous%20integration/badge.svg)
 
 This crate is loosely based on [`read-process-memory`](https://github.com/luser/read-process-memory) by luser, but has been extended to be able to write to process memory as well.
 
