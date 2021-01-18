@@ -14,7 +14,7 @@ use crate::{CopyAddress, Memory, ProcessHandle, PutAddress};
 /// // We need to make sure that we get a handle to a process, in this case, ourselves
 /// let handle = (std::process::id() as Pid).try_into_process_handle().unwrap();
 /// // We make a `DataMember` that has an offset referring to its location in memory
-/// let member = DataMember::new_offset(handle, vec![&x as *const _ as usize]);
+/// let member = DataMember::<u32>::new_addr(handle, &x as *const _ as usize);
 /// // The memory refered to is now the same
 /// println!("Memory location: &x: {}, member: {}", &x as *const _ as usize,
 ///     member.get_offset().unwrap());
@@ -29,7 +29,8 @@ use crate::{CopyAddress, Memory, ProcessHandle, PutAddress};
 /// ```
 #[derive(Clone, Debug)]
 pub struct DataMember<T> {
-    offsets: Vec<usize>,
+    base: usize,
+    offsets: Vec<isize>,
     process: ProcessHandle,
     _phantom: std::marker::PhantomData<*mut T>,
 }
@@ -51,13 +52,31 @@ impl<T: Sized + Copy> DataMember<T> {
     #[must_use]
     pub fn new(handle: ProcessHandle) -> Self {
         Self {
+            base: 0,
             offsets: Vec::new(),
             process: handle,
             _phantom: std::marker::PhantomData,
         }
     }
 
-    /// Create a new `DataMember` from a [`ProcessHandle`] and some number of offsets. You must
+    // /// Create a new `DataMember` from a [`ProcessHandle`] and some number of offsets. You must
+    // /// remember to call [`try_into_process_handle`] on a [`Pid`] as sometimes the `Pid` can have
+    // /// the same backing type as a [`ProcessHandle`], resulting in an error.
+    // ///
+    // /// [`try_into_process_handle`]: trait.TryIntoProcessHandle.html#tymethod.try_into_process_handle
+    // /// [`ProcessHandle`]: type.ProcessHandle.html
+    // /// [`Pid`]: type.Pid.html
+    // #[must_use]
+    // pub fn new_offset(handle: ProcessHandle, offsets: Vec<isize>) -> Self {
+    //     Self {
+    //         base: 0,
+    //         offsets,
+    //         process: handle,
+    //         _phantom: std::marker::PhantomData,
+    //     }
+    // }
+
+    /// Create a new `DataMember` from a [`ProcessHandle`], a base address, and some number of offsets. You must
     /// remember to call [`try_into_process_handle`] on a [`Pid`] as sometimes the `Pid` can have
     /// the same backing type as a [`ProcessHandle`], resulting in an error.
     ///
@@ -65,26 +84,58 @@ impl<T: Sized + Copy> DataMember<T> {
     /// [`ProcessHandle`]: type.ProcessHandle.html
     /// [`Pid`]: type.Pid.html
     #[must_use]
-    pub fn new_offset(handle: ProcessHandle, offsets: Vec<usize>) -> Self {
+    pub fn new_addr_offset(handle: ProcessHandle, base: usize, offsets: Vec<isize>) -> Self {
         Self {
+            base,
             offsets,
             process: handle,
             _phantom: std::marker::PhantomData,
         }
     }
+
+    /// Create a new `DataMember` from a [`ProcessHandle`], and an absolute address (just one offset, so to speak). You must
+    /// remember to call [`try_into_process_handle`] on a [`Pid`] as sometimes the `Pid` can have
+    /// the same backing type as a [`ProcessHandle`], resulting in an error.
+    ///
+    /// [`try_into_process_handle`]: trait.TryIntoProcessHandle.html#tymethod.try_into_process_handle
+    /// [`ProcessHandle`]: type.ProcessHandle.html
+    /// [`Pid`]: type.Pid.html
+    #[must_use]
+    pub fn new_addr(handle: ProcessHandle, base: usize) -> Self {
+        Self {
+            base,
+            offsets: Vec::new(),
+            process: handle,
+            _phantom: std::marker::PhantomData,
+        }
+    }
+
+    /// Clones an existing `DataMember`, and appends some offsets. Mostly provided for convenience.
+    #[must_use]
+    pub fn extend<TNew>(&self, more_offsets: Vec<isize>) -> DataMember<TNew> {
+        let mut clone = DataMember {
+            base: self.base,
+            offsets: self.offsets.clone(),
+            process: self.process,
+            _phantom: std::marker::PhantomData,
+        };
+        clone.offsets.extend(more_offsets);
+        clone
+    }
 }
 
 impl<T: Sized + Copy> Memory<T> for DataMember<T> {
-    fn set_offset(&mut self, new_offsets: Vec<usize>) {
+    fn set_offset(&mut self, new_base: usize, new_offsets: Vec<isize>) {
+        self.base = new_base;
         self.offsets = new_offsets;
     }
 
     fn get_offset(&self) -> std::io::Result<usize> {
-        self.process.get_offset(&self.offsets)
+        self.process.get_offset(self.base, &self.offsets)
     }
 
     fn read(&self) -> std::io::Result<T> {
-        let offset = self.process.get_offset(&self.offsets)?;
+        let offset = self.process.get_offset(self.base, &self.offsets)?;
         // This can't be [0_u8;size_of::<T>()] because no const generics.
         // It will be freed at the end of the function because no references are held to it.
         let mut buffer = vec![0_u8; std::mem::size_of::<T>()];
@@ -94,7 +145,7 @@ impl<T: Sized + Copy> Memory<T> for DataMember<T> {
 
     fn write(&self, value: &T) -> std::io::Result<()> {
         use std::slice;
-        let offset = self.process.get_offset(&self.offsets)?;
+        let offset = self.process.get_offset(self.base, &self.offsets)?;
         let buffer: &[u8] =
             unsafe { slice::from_raw_parts(value as *const _ as _, std::mem::size_of::<T>()) };
         self.process.put_address(offset, &buffer)
@@ -114,7 +165,7 @@ mod test {
             .unwrap();
         println!("Process Handle: {:?}", handle);
         let mut member = DataMember::<i32>::new(handle);
-        member.set_offset(vec![&test as *const _ as usize]);
+        member.set_offset(&test as *const _ as usize, vec![]);
         assert_eq!(test, member.read().unwrap());
         member.write(&5_i32).unwrap();
         assert_eq!(test, 5_i32);
@@ -128,7 +179,7 @@ mod test {
             .unwrap();
         println!("Process Handle: {:?}", handle);
         let mut member = DataMember::<i64>::new(handle);
-        member.set_offset(vec![&test as *const _ as usize]);
+        member.set_offset(&test as *const _ as usize, vec![]);
         assert_eq!(test, member.read().unwrap());
         member.write(&-1_i64).unwrap();
         assert_eq!(test, -1);
@@ -141,8 +192,9 @@ mod test {
             .try_into_process_handle()
             .unwrap();
         println!("Process Handle: {:?}", handle);
-        let mut member = DataMember::<usize>::new(handle);
-        member.set_offset(vec![&test as *const _ as usize]);
+        // let mut member = DataMember::<usize>::new(handle);
+        // member.set_offset(&test as *const _ as usize, vec![]);
+        let member = DataMember::<usize>::new_addr(handle, &test as *const _ as usize);
         assert_eq!(test, member.read().unwrap());
         member.write(&0xffff).unwrap();
         assert_eq!(test, 0xffff);

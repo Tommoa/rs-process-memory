@@ -66,13 +66,13 @@ fn main() -> std::io::Result<()> {
     let process_handle = get_pid("MirrorsEdgeCatalyst.exe").try_into_process_handle()?;
 
     let mut spawn_timer = DataMember::<f32>::new(process_handle);
-    spawn_timer.set_offset(vec![0x1_42_14_2a_d8, 0xac]);
+    spawn_timer.set_offset(0x1_42_14_2a_d8, vec![0xac]);
 
     let mut level_warmup = DataMember::<f32>::new(process_handle);
-    level_warmup.set_offset(vec![0x1_42_14_2a_d8, 0x9c]);
+    level_warmup.set_offset(0x1_42_14_2a_d8, vec![0x9c]);
 
     let mut emitters_enabled = DataMember::<bool>::new(process_handle);
-    emitters_enabled.set_offset(vec![0x1_42_3e_44_78, 0xac]);
+    emitters_enabled.set_offset(0x1_42_3e_44_78, vec![0xac]);
 
     spawn_timer.write(&1.0)?;
     level_warmup.write(&1.0)?;

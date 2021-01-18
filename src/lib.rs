@@ -15,9 +15,9 @@
 //! // We need to make sure that we get a handle to a process, in this case, ourselves
 //! let handle = (std::process::id() as Pid).try_into_process_handle().unwrap();
 //! // We make a `DataMember` that has an offset referring to its location in memory
-//! let member = DataMember::new_offset(handle, vec![&x as *const _ as usize]);
+//! let member = DataMember::new_addr(handle, &x as *const _ as usize);
 //! // The memory refered to is now the same
-//! println!("Memory location: &x: {}, member: {}", &x as *const _ as usize,
+//! println!("Memory location: &x: {:X}, member: {}", &x as *const _ as usize,
 //!     member.get_offset().unwrap());
 //! assert_eq!(&x as *const _ as usize, member.get_offset().unwrap());
 //! // The value of the member is the same as the variable
@@ -35,9 +35,9 @@
 //! println!("Original x-value: {}", x);
 //!
 //! // We make a `LocalMember` that has an offset referring to its location in memory
-//! let member = LocalMember::new_offset(vec![&x as *const _ as usize]);
+//! let member = LocalMember::new_addr(&x as *const _ as usize);
 //! // The memory refered to is now the same
-//! println!("Memory location: &x: {}, member: {}", &x as *const _ as usize,
+//! println!("Memory location: &x: {:X}, member: {}", &x as *const _ as usize,
 //!     member.get_offset().unwrap());
 //! assert_eq!(&x as *const _ as usize, member.get_offset().unwrap());
 //! // The value of the member is the same as the variable
@@ -58,7 +58,7 @@
 //!     .set_arch(Architecture::Arch32Bit);
 //! // We make a `DataMember` that has a series of offsets refering to a known value in
 //! // the target processes memory
-//! let member = DataMember::new_offset(handle, vec![0x01_02_03_04, 0x04, 0x08, 0x10]);
+//! let member = DataMember::new_addr_offset(handle, 0x01020304, vec![0x04, 0x08, 0x10]);
 //! // The memory offset can now be correctly calculated:
 //! println!("Target memory location: {}", member.get_offset().unwrap());
 //! // The memory offset can now be used to retrieve and modify values:
@@ -109,19 +109,25 @@ pub trait CopyAddress {
     ///
     /// # Errors
     /// `std::io::Error` if an error occurs copying the address.
-    fn get_offset(&self, offsets: &[usize]) -> std::io::Result<usize> {
+    fn get_offset(&self, base: usize, offsets: &[isize]) -> std::io::Result<usize> {
         // Look ma! No unsafes!
-        let mut offset: usize = 0;
-        let noffsets: usize = offsets.len();
-        let mut copy = vec![0_u8; self.get_pointer_width() as usize];
-        for next_offset in offsets.iter().take(noffsets - 1) {
-            offset += next_offset;
-            self.copy_address(offset, &mut copy)?;
-            offset = self.get_pointer_width().pointer_from_ne_bytes(&copy);
-        }
 
-        offset += offsets[noffsets - 1];
-        Ok(offset)
+        let noffsets: usize = offsets.len();
+        if noffsets > 0 {
+            let mut offset: usize = base;
+            let mut copy = vec![0_u8; self.get_pointer_width() as usize];
+            for next_offset in offsets.iter().take(noffsets - 1) {
+                // should work because of 2s-complement.
+                offset = offset.wrapping_add(*next_offset as usize);
+                self.copy_address(offset, &mut copy)?;
+                offset = self.get_pointer_width().pointer_from_ne_bytes(&copy);
+            }
+
+            // should work because of 2s-complement.
+            Ok(offset.wrapping_add(offsets[noffsets - 1] as usize))
+        } else {
+            Ok(base)
+        }
     }
 
     /// Get the the pointer width of the underlying process.
@@ -198,7 +204,7 @@ pub trait Memory<T> {
     /// For those sorts of data structures, to access data you need to go via multiple pointers, so
     /// that if an inner region reallocates its size, the variable that is being modified will be
     /// correctly modified.
-    fn set_offset(&mut self, new_offsets: Vec<usize>);
+    fn set_offset(&mut self, new_base: usize, new_offsets: Vec<isize>);
 
     /// Gets the actual total offset from the offsets given by [`Memory::set_offset`].
     ///
@@ -258,4 +264,45 @@ where
 
     source.copy_address(addr, &mut copy)?;
     Ok(copy)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[repr(C)]
+    #[derive(Clone, Copy)]
+    struct Player {
+        x: u32,
+        y: u32,
+    }
+
+    #[repr(C)]
+    struct GameState {
+        garbage: u32,
+        garbage2: u32,
+        players: [Box<Player>; 2], // note that this array is in-place, since it's fixed size.
+    }
+
+    #[test]
+    fn multilevel_pointers() {
+        let game = GameState {
+            garbage: 42,
+            garbage2: 1337,
+            players: [Box::new(Player {x:1, y:2}), Box::new(Player {x:3, y:4})],
+        };
+        let handle = (std::process::id() as Pid).try_into_process_handle().unwrap();
+
+        let garbage2 = DataMember::<u32>::new_addr_offset(handle, &game as *const _ as usize, vec![4]);
+        assert_eq!(1337, garbage2.read().unwrap());
+
+        let second_player = DataMember::<Player>::new_addr_offset(handle, &game as *const _ as usize,
+            vec![8 + (handle.get_pointer_width() as u8 as isize) * 1]); // skip u32 + i64 + first player.
+
+        let second_player_x = second_player.extend::<u32>(vec![0]);
+        let second_player_y = second_player.extend::<u32>(vec![4]); // sizeof u32
+
+        assert_eq!(3, second_player_x.read().unwrap());
+        assert_eq!(4, second_player_y.read().unwrap());
+    }
 }

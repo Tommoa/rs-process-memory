@@ -10,7 +10,7 @@ use crate::Memory;
 /// let x = 4u32;
 ///
 /// // We make a `LocalMember` that has an offset referring to its location in memory
-/// let member = LocalMember::new_offset(vec![&x as *const _ as usize]);
+/// let member = LocalMember::new_addr(&x as *const _ as usize);
 /// // The memory refered to is now the same
 /// assert_eq!(&x as *const _ as usize, member.get_offset().unwrap());
 /// // The value of the member is the same as the variable
@@ -34,7 +34,8 @@ use crate::Memory;
 /// to mess something up really badly in your program.
 #[derive(Clone, Debug, Default)]
 pub struct LocalMember<T> {
-    offsets: Vec<usize>,
+    base: usize,
+    offsets: Vec<isize>,
     _phantom: std::marker::PhantomData<*mut T>,
 }
 
@@ -51,6 +52,7 @@ impl<T: Sized + Copy> LocalMember<T> {
     #[must_use]
     pub fn new() -> Self {
         Self {
+            base: 0,
             offsets: Vec::new(),
             _phantom: std::marker::PhantomData,
         }
@@ -58,8 +60,19 @@ impl<T: Sized + Copy> LocalMember<T> {
 
     /// Create a new `LocalMember` with a given set of offsets.
     #[must_use]
-    pub fn new_offset(offsets: Vec<usize>) -> Self {
+    pub fn new_addr(base: usize) -> Self {
         Self {
+            base,
+            offsets: Vec::new(),
+            _phantom: std::marker::PhantomData,
+        }
+    }
+
+    /// Create a new `LocalMember` with a given set of offsets.
+    #[must_use]
+    pub fn new_addr_offset(base: usize, offsets: Vec<isize>) -> Self {
+        Self {
+            base,
             offsets,
             _phantom: std::marker::PhantomData,
         }
@@ -67,28 +80,33 @@ impl<T: Sized + Copy> LocalMember<T> {
 }
 
 impl<T: Sized + Copy> Memory<T> for LocalMember<T> {
-    fn set_offset(&mut self, new_offsets: Vec<usize>) {
+    fn set_offset(&mut self, new_base: usize, new_offsets: Vec<isize>) {
+        self.base = new_base;
         self.offsets = new_offsets;
     }
 
     fn get_offset(&self) -> std::io::Result<usize> {
-        let mut offset = 0_usize;
-        for i in 0..self.offsets.len() - 1 {
-            offset = offset.wrapping_add(self.offsets[i]);
-            if offset == 0 {
-                return Err(std::io::Error::new(
-                    std::io::ErrorKind::Other,
-                    "Would be a null dereference!",
-                ));
+        if !self.offsets.is_empty() {
+            let mut offset = self.base;
+            for i in 0..self.offsets.len() - 1 {
+                offset = offset.wrapping_add(self.offsets[i] as usize); // should work because of 2s-complement
+                if offset == 0 {
+                    return Err(std::io::Error::new(
+                        std::io::ErrorKind::Other,
+                        "Would be a null dereference!",
+                    ));
+                }
+                // We can't guarantee alignment, so we must use `read_unaligned()`
+                // to ensure that its ok to read from, as `read()` requires that
+                // our source pointer is properly aligned.
+                unsafe {
+                    offset = (offset as *const usize).read_unaligned();
+                }
             }
-            // We can't guarantee alignment, so we must use `read_unaligned()`
-            // to ensure that its ok to read from, as `read()` requires that
-            // our source pointer is properly aligned.
-            unsafe {
-                offset = (offset as *const usize).read_unaligned();
-            }
+            Ok(offset.wrapping_add(self.offsets[self.offsets.len() - 1] as usize))
+        } else {
+            Ok(self.base)
         }
-        Ok(offset.wrapping_add(self.offsets[self.offsets.len() - 1]))
     }
 
     /// This will only return a error if one of the offsets gives a null pointer. or give a
@@ -120,7 +138,7 @@ mod test {
     fn modify_local_i32() {
         let test = 4_i32;
         let mut member = LocalMember::<i32>::new();
-        member.set_offset(vec![&test as *const _ as usize]);
+        member.set_offset(&test as *const _ as usize, vec![]);
         assert_eq!(test, member.read().unwrap());
         member.write(&5_i32).unwrap();
         assert_eq!(test, 5_i32);
@@ -129,7 +147,7 @@ mod test {
     fn modify_local_i64() {
         let test = 3_i64;
         let mut member = LocalMember::<i64>::new();
-        member.set_offset(vec![&test as *const _ as usize]);
+        member.set_offset(&test as *const _ as usize, vec![]);
         assert_eq!(test, member.read().unwrap());
         member.write(&-1_i64).unwrap();
         assert_eq!(test, -1);
@@ -137,8 +155,7 @@ mod test {
     #[test]
     fn modify_local_usize() {
         let test = 0_usize;
-        let mut member = LocalMember::<usize>::new();
-        member.set_offset(vec![&test as *const _ as usize]);
+        let member = LocalMember::<usize>::new_addr(&test as *const _ as usize);
         assert_eq!(test, member.read().unwrap());
         member.write(&0xffff).unwrap();
         assert_eq!(test, 0xffff);
