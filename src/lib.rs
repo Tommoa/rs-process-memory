@@ -196,6 +196,22 @@ pub trait ProcessHandleExt {
     fn set_arch(self, arch: Architecture) -> Self;
 }
 
+/// Handling modules (e.g. DLLs) in a process.
+pub trait ModuleInfo {
+    /// Gets the base address of a module in a process. For example, "GameAssembly.dll" when on Windows.
+    /// You can then use the address in the `base` parameter of [`set_offset`] for example.
+    /// 
+    /// # Errors
+    /// Returns `std::io::ErrorKind::NotFound` when no such module name exists.
+    /// Returns OS Error when something else went wrong.
+    /// 
+    /// # Panics
+    /// Panics when closing the handle fails (e.g. double close).
+    ///
+    /// [`set_offset`]: trait.Memory.html#tymethod.set_offset
+    fn get_module_base(&self, name: &str) -> std::io::Result<usize>;
+}
+
 /// A trait that refers to and allows writing to a region of memory in a running program.
 pub trait Memory<T> {
     /// Set the offsets to the location in memory. This is used for things such as multi-level
