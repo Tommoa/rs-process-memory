@@ -112,6 +112,7 @@ pub trait CopyAddress {
     ///
     /// # Errors
     /// `std::io::Error` if an error occurs copying the address.
+    #[allow(clippy::cast_sign_loss)]
     fn get_offset(&self, base: usize, offsets: &[isize]) -> std::io::Result<usize> {
         // Look ma! No unsafes!
 

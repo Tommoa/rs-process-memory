@@ -1,5 +1,5 @@
-use winapi::shared::minwindef;
 use winapi::um::{handleapi::CloseHandle, tlhelp32};
+use winapi::{shared::minwindef, um::handleapi::INVALID_HANDLE_VALUE};
 
 use std::os::windows::io::AsRawHandle;
 use std::process::Child;
@@ -113,6 +113,7 @@ impl PutAddress for ProcessHandle {
 
 /// Use `CreateToolhelp32Snapshot` to get and filter list of loaded modules (called DLLs in Windows)
 /// of this process, returning the base address of it.
+#[allow(clippy::clippy::cast_possible_truncation)] // for size_of as u32
 impl ModuleInfo for Pid {
     fn get_module_base(&self, name: &str) -> std::io::Result<usize> {
         // taken from https://stackoverflow.com/questions/41552466/how-do-i-get-the-physical-baseaddress-of-an-dll-used-in-a-process
@@ -136,7 +137,7 @@ impl ModuleInfo for Pid {
                 tlhelp32::TH32CS_SNAPMODULE | tlhelp32::TH32CS_SNAPMODULE32,
                 *self,
             );
-            if snapshot.is_null() {
+            if snapshot == INVALID_HANDLE_VALUE {
                 return Err(std::io::Error::last_os_error());
             }
 
@@ -144,10 +145,11 @@ impl ModuleInfo for Pid {
                 // makeshift do-while
                 loop {
                     if utf8_to_string(&module_entry.szModule) == name {
+                        let addr = module_entry.modBaseAddr as usize;
                         if CloseHandle(snapshot) == minwindef::FALSE {
                             panic!("Could not close handle")
                         };
-                        return Ok(module_entry.modBaseAddr as usize);
+                        return Ok(addr);
                     }
 
                     if tlhelp32::Module32Next(snapshot, &mut module_entry) == minwindef::FALSE {
@@ -160,19 +162,24 @@ impl ModuleInfo for Pid {
             if CloseHandle(snapshot) == minwindef::FALSE {
                 panic!("Could not close handle")
             };
-            return Err(std::io::Error::new(
+            Err(std::io::Error::new(
                 std::io::ErrorKind::NotFound,
                 format!(
                     "Process PID#{} contains no module named \"{}\".",
                     *self, name
                 ),
-            ));
+            ))
         }
     }
 }
 
 /// Get the process ID of some process by name. For example,"MyGame.exe".
 /// If you want to get the PID of your own process, use `std::process:id() as Pid` instead.
+///
+/// # Errors
+/// If no process exists of that name, returns an `std::io::Error` with kind `std::io::ErrorKind::NotFound`.
+/// If something went very wrong with the windows API, returns last OS error.
+#[allow(clippy::cast_possible_truncation)]
 pub fn get_pid(process_name: &str) -> std::io::Result<Pid> {
     let mut entry = winapi::um::tlhelp32::PROCESSENTRY32 {
         dwSize: std::mem::size_of::<winapi::um::tlhelp32::PROCESSENTRY32>() as u32,
@@ -193,7 +200,7 @@ pub fn get_pid(process_name: &str) -> std::io::Result<Pid> {
             winapi::um::tlhelp32::TH32CS_SNAPPROCESS,
             0,
         );
-        if snapshot.is_null() {
+        if snapshot == INVALID_HANDLE_VALUE {
             return Err(std::io::Error::last_os_error());
         }
 
@@ -204,10 +211,11 @@ pub fn get_pid(process_name: &str) -> std::io::Result<Pid> {
             loop {
                 // println!("Have process: {}", utf8_to_string(&entry.szExeFile));
                 if utf8_to_string(&entry.szExeFile) == process_name {
+                    let pid = entry.th32ProcessID;
                     if CloseHandle(snapshot) == minwindef::FALSE {
                         panic!("Could not close handle")
                     };
-                    return Ok(entry.th32ProcessID);
+                    return Ok(pid);
                 }
 
                 if winapi::um::tlhelp32::Process32Next(snapshot, &mut entry)
@@ -221,14 +229,14 @@ pub fn get_pid(process_name: &str) -> std::io::Result<Pid> {
         if CloseHandle(snapshot) == minwindef::FALSE {
             panic!("Could not close handle")
         };
-        return Err(std::io::Error::new(
+        Err(std::io::Error::new(
             std::io::ErrorKind::NotFound,
             format!("Could not find Process ID of \"{}\".", process_name),
-        ));
+        ))
     }
 }
 
-/// A helper function to turn a c_char array to a String
+/// A helper function to turn a `c_char` array to a String
 fn utf8_to_string(bytes: &[i8]) -> String {
     use std::ffi::CStr;
     unsafe {

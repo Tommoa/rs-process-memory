@@ -85,6 +85,7 @@ impl<T: Sized + Copy> Memory<T> for LocalMember<T> {
         self.offsets = new_offsets;
     }
 
+    #[allow(clippy::cast_sign_loss)]
     fn get_offset(&self) -> std::io::Result<usize> {
         if self.offsets.is_empty() {
             Ok(self.base)
