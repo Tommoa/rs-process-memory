@@ -86,7 +86,9 @@ impl<T: Sized + Copy> Memory<T> for LocalMember<T> {
     }
 
     fn get_offset(&self) -> std::io::Result<usize> {
-        if !self.offsets.is_empty() {
+        if self.offsets.is_empty() {
+            Ok(self.base)
+        } else {
             let mut offset = self.base;
             for i in 0..self.offsets.len() - 1 {
                 offset = offset.wrapping_add(self.offsets[i] as usize); // should work because of 2s-complement
@@ -104,8 +106,6 @@ impl<T: Sized + Copy> Memory<T> for LocalMember<T> {
                 }
             }
             Ok(offset.wrapping_add(self.offsets[self.offsets.len() - 1] as usize))
-        } else {
-            Ok(self.base)
         }
     }
 

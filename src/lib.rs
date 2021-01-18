@@ -203,11 +203,11 @@ pub trait ProcessHandleExt {
 pub trait ModuleInfo {
     /// Gets the base address of a module in a process. For example, "GameAssembly.dll" when on Windows.
     /// You can then use the address in the `base` parameter of [`set_offset`] for example.
-    /// 
+    ///
     /// # Errors
     /// Returns `std::io::ErrorKind::NotFound` when no such module name exists.
     /// Returns OS Error when something else went wrong.
-    /// 
+    ///
     /// # Panics
     /// Panics when closing the handle fails (e.g. double close).
     ///
@@ -308,15 +308,24 @@ mod tests {
         let game = GameState {
             garbage: 42,
             garbage2: 1337,
-            players: [Box::new(Player {x:1, y:2}), Box::new(Player {x:3, y:4})],
+            players: [
+                Box::new(Player { x: 1, y: 2 }),
+                Box::new(Player { x: 3, y: 4 }),
+            ],
         };
-        let handle = (std::process::id() as Pid).try_into_process_handle().unwrap();
+        let handle = (std::process::id() as Pid)
+            .try_into_process_handle()
+            .unwrap();
 
-        let garbage2 = DataMember::<u32>::new_addr_offset(handle, &game as *const _ as usize, vec![4]);
+        let garbage2 =
+            DataMember::<u32>::new_addr_offset(handle, &game as *const _ as usize, vec![4]);
         assert_eq!(1337, garbage2.read().unwrap());
 
-        let second_player = DataMember::<Player>::new_addr_offset(handle, &game as *const _ as usize,
-            vec![8 + (handle.get_pointer_width() as u8 as isize) * 1]); // skip u32 + i64 + first player.
+        let second_player = DataMember::<Player>::new_addr_offset(
+            handle,
+            &game as *const _ as usize,
+            vec![8 + (handle.get_pointer_width() as u8 as isize) * 1],
+        ); // skip u32 + i64 + first player.
 
         let second_player_x = second_player.extend::<u32>(vec![0]);
         let second_player_y = second_player.extend::<u32>(vec![4]); // sizeof u32

@@ -5,7 +5,9 @@ use std::os::windows::io::AsRawHandle;
 use std::process::Child;
 use std::ptr;
 
-use super::{Architecture, CopyAddress, ProcessHandleExt, PutAddress, TryIntoProcessHandle, ModuleInfo};
+use super::{
+    Architecture, CopyAddress, ModuleInfo, ProcessHandleExt, PutAddress, TryIntoProcessHandle,
+};
 
 /// On Windows a `Pid` is a `DWORD`.
 pub type Pid = minwindef::DWORD;
@@ -124,13 +126,16 @@ impl ModuleInfo for Pid {
             modBaseSize: 0,
             hModule: std::ptr::null_mut(), // yikes
             szModule: [0; tlhelp32::MAX_MODULE_NAME32 + 1],
-            szExePath: [0; winapi::shared::minwindef::MAX_PATH]
+            szExePath: [0; winapi::shared::minwindef::MAX_PATH],
         };
 
         unsafe {
             module_entry.dwSize = std::mem::size_of::<tlhelp32::MODULEENTRY32>() as u32;
 
-            let snapshot = tlhelp32::CreateToolhelp32Snapshot(tlhelp32::TH32CS_SNAPMODULE | tlhelp32::TH32CS_SNAPMODULE32, *self);
+            let snapshot = tlhelp32::CreateToolhelp32Snapshot(
+                tlhelp32::TH32CS_SNAPMODULE | tlhelp32::TH32CS_SNAPMODULE32,
+                *self,
+            );
             if snapshot.is_null() {
                 return Err(std::io::Error::last_os_error());
             }
@@ -139,17 +144,29 @@ impl ModuleInfo for Pid {
                 // makeshift do-while
                 loop {
                     if utf8_to_string(&module_entry.szModule) == name {
-                        if CloseHandle(snapshot) == minwindef::FALSE { panic!("Could not close handle") };
+                        if CloseHandle(snapshot) == minwindef::FALSE {
+                            panic!("Could not close handle")
+                        };
                         return Ok(module_entry.modBaseAddr as usize);
                     }
 
-                    if tlhelp32::Module32Next(snapshot, &mut module_entry) == minwindef::FALSE { break; }
+                    if tlhelp32::Module32Next(snapshot, &mut module_entry) == minwindef::FALSE {
+                        break;
+                    }
                 }
             }
 
             // We searched everything, nothing found
-            if CloseHandle(snapshot) == minwindef::FALSE { panic!("Could not close handle") };
-            return Err(std::io::Error::new(std::io::ErrorKind::NotFound, format!("Process PID#{} contains no module named \"{}\".", *self, name)));
+            if CloseHandle(snapshot) == minwindef::FALSE {
+                panic!("Could not close handle")
+            };
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::NotFound,
+                format!(
+                    "Process PID#{} contains no module named \"{}\".",
+                    *self, name
+                ),
+            ));
         }
     }
 }
@@ -172,26 +189,42 @@ pub fn get_pid(process_name: &str) -> std::io::Result<Pid> {
 
     let snapshot: winapi::um::winnt::HANDLE;
     unsafe {
-        snapshot = winapi::um::tlhelp32::CreateToolhelp32Snapshot(winapi::um::tlhelp32::TH32CS_SNAPPROCESS, 0);
+        snapshot = winapi::um::tlhelp32::CreateToolhelp32Snapshot(
+            winapi::um::tlhelp32::TH32CS_SNAPPROCESS,
+            0,
+        );
         if snapshot.is_null() {
             return Err(std::io::Error::last_os_error());
         }
 
-        if winapi::um::tlhelp32::Process32First(snapshot, &mut entry) == winapi::shared::minwindef::TRUE {
+        if winapi::um::tlhelp32::Process32First(snapshot, &mut entry)
+            == winapi::shared::minwindef::TRUE
+        {
             // makeshift do-while
             loop {
                 // println!("Have process: {}", utf8_to_string(&entry.szExeFile));
                 if utf8_to_string(&entry.szExeFile) == process_name {
-                    if CloseHandle(snapshot) == minwindef::FALSE { panic!("Could not close handle") };
+                    if CloseHandle(snapshot) == minwindef::FALSE {
+                        panic!("Could not close handle")
+                    };
                     return Ok(entry.th32ProcessID);
                 }
 
-                if winapi::um::tlhelp32::Process32Next(snapshot, &mut entry) == winapi::shared::minwindef::FALSE { break; }
+                if winapi::um::tlhelp32::Process32Next(snapshot, &mut entry)
+                    == winapi::shared::minwindef::FALSE
+                {
+                    break;
+                }
             }
         }
 
-        if CloseHandle(snapshot) == minwindef::FALSE { panic!("Could not close handle") };
-        return Err(std::io::Error::new(std::io::ErrorKind::NotFound, format!("Could not find Process ID of \"{}\".", process_name)));
+        if CloseHandle(snapshot) == minwindef::FALSE {
+            panic!("Could not close handle")
+        };
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::NotFound,
+            format!("Could not find Process ID of \"{}\".", process_name),
+        ));
     }
 }
 
