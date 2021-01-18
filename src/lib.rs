@@ -92,6 +92,9 @@ mod platform;
 #[path = "windows.rs"]
 mod platform;
 
+#[cfg(windows)]
+pub use platform::get_pid;
+
 /// A trait that defines that it is possible to copy some memory from something represented by a
 /// type into a buffer.
 pub trait CopyAddress {

@@ -1,4 +1,5 @@
 use winapi::shared::minwindef;
+use winapi::um::{handleapi::CloseHandle, tlhelp32};
 
 use std::os::windows::io::AsRawHandle;
 use std::process::Child;
@@ -113,9 +114,6 @@ impl PutAddress for ProcessHandle {
 impl ModuleInfo for Pid {
     fn get_module_base(&self, name: &str) -> std::io::Result<usize> {
         // taken from https://stackoverflow.com/questions/41552466/how-do-i-get-the-physical-baseaddress-of-an-dll-used-in-a-process
-        use winapi::um::{handleapi::CloseHandle, tlhelp32::{self, TH32CS_SNAPMODULE, TH32CS_SNAPMODULE32}};
-        use minwindef::{TRUE, FALSE};
-
         let mut module_entry = tlhelp32::MODULEENTRY32 {
             dwSize: 0,
             th32ModuleID: 0,
@@ -132,28 +130,68 @@ impl ModuleInfo for Pid {
         unsafe {
             module_entry.dwSize = std::mem::size_of::<tlhelp32::MODULEENTRY32>() as u32;
 
-            let snapshot = tlhelp32::CreateToolhelp32Snapshot(TH32CS_SNAPMODULE | TH32CS_SNAPMODULE32, *self);
+            let snapshot = tlhelp32::CreateToolhelp32Snapshot(tlhelp32::TH32CS_SNAPMODULE | tlhelp32::TH32CS_SNAPMODULE32, *self);
             if snapshot.is_null() {
                 return Err(std::io::Error::last_os_error());
             }
 
-            if tlhelp32::Module32First(snapshot, &mut module_entry) == TRUE {
+            if tlhelp32::Module32First(snapshot, &mut module_entry) == minwindef::TRUE {
                 // makeshift do-while
                 loop {
-                    println!("Have module: {}", utf8_to_string(&module_entry.szModule));
                     if utf8_to_string(&module_entry.szModule) == name {
-                        if CloseHandle(snapshot) == FALSE { panic!("Could not close handle") };
+                        if CloseHandle(snapshot) == minwindef::FALSE { panic!("Could not close handle") };
                         return Ok(module_entry.modBaseAddr as usize);
                     }
 
-                    if tlhelp32::Module32Next(snapshot, &mut module_entry) != TRUE { break; }
+                    if tlhelp32::Module32Next(snapshot, &mut module_entry) == minwindef::FALSE { break; }
                 }
             }
 
             // We searched everything, nothing found
-            if CloseHandle(snapshot) == FALSE { panic!("Could not close handle") };
+            if CloseHandle(snapshot) == minwindef::FALSE { panic!("Could not close handle") };
             return Err(std::io::Error::new(std::io::ErrorKind::NotFound, format!("Process PID#{} contains no module named \"{}\".", *self, name)));
         }
+    }
+}
+
+/// Get the process ID of some process by name. For example,"MyGame.exe".
+/// If you want to get the PID of your own process, use `std::process:id() as Pid` instead.
+pub fn get_pid(process_name: &str) -> std::io::Result<Pid> {
+    let mut entry = winapi::um::tlhelp32::PROCESSENTRY32 {
+        dwSize: std::mem::size_of::<winapi::um::tlhelp32::PROCESSENTRY32>() as u32,
+        cntUsage: 0,
+        th32ProcessID: 0,
+        th32DefaultHeapID: 0,
+        th32ModuleID: 0,
+        cntThreads: 0,
+        th32ParentProcessID: 0,
+        pcPriClassBase: 0,
+        dwFlags: 0,
+        szExeFile: [0; winapi::shared::minwindef::MAX_PATH],
+    };
+
+    let snapshot: winapi::um::winnt::HANDLE;
+    unsafe {
+        snapshot = winapi::um::tlhelp32::CreateToolhelp32Snapshot(winapi::um::tlhelp32::TH32CS_SNAPPROCESS, 0);
+        if snapshot.is_null() {
+            return Err(std::io::Error::last_os_error());
+        }
+
+        if winapi::um::tlhelp32::Process32First(snapshot, &mut entry) == winapi::shared::minwindef::TRUE {
+            // makeshift do-while
+            loop {
+                // println!("Have process: {}", utf8_to_string(&entry.szExeFile));
+                if utf8_to_string(&entry.szExeFile) == process_name {
+                    if CloseHandle(snapshot) == minwindef::FALSE { panic!("Could not close handle") };
+                    return Ok(entry.th32ProcessID);
+                }
+
+                if winapi::um::tlhelp32::Process32Next(snapshot, &mut entry) == winapi::shared::minwindef::FALSE { break; }
+            }
+        }
+
+        if CloseHandle(snapshot) == minwindef::FALSE { panic!("Could not close handle") };
+        return Err(std::io::Error::new(std::io::ErrorKind::NotFound, format!("Could not find Process ID of \"{}\".", process_name)));
     }
 }
 
@@ -181,6 +219,18 @@ mod tests {
         // println!("ntdll.exe address: 0x{:X}", base);
 
         match pid.get_module_base("this_dll_doesnt_exist.dll") {
+            Ok(_) => panic!(),
+            Err(e) => {
+                assert_eq!(ErrorKind::NotFound, e.kind());
+            }
+        }
+    }
+
+    #[test]
+    fn getpid() {
+        let _pid = get_pid("svchost.exe").unwrap();
+
+        match get_pid("this_process_doesnt_exist.exe") {
             Ok(_) => panic!(),
             Err(e) => {
                 assert_eq!(ErrorKind::NotFound, e.kind());
