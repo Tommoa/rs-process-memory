@@ -89,4 +89,11 @@ impl Architecture {
             Architecture::Arch128Bit => u128::from_ne_bytes(bytes.try_into().unwrap()) as usize,
         }
     }
+
+    /// Returns the amount of bytes which a pointer takes up on this architecture.
+    /// E.g. 4 for 32bit, 8 for 64bit, etc.
+    #[must_use]
+    pub fn pointer_width_bytes(self) -> usize {
+        self as u8 as usize
+    }
 }
