@@ -115,12 +115,12 @@ pub trait CopyAddress {
         let noffsets: usize = offsets.len();
         let mut copy = vec![0_u8; self.get_pointer_width() as usize];
         for next_offset in offsets.iter().take(noffsets - 1) {
-            offset += next_offset;
+            offset = offset.wrapping_add(*next_offset);
             self.copy_address(offset, &mut copy)?;
             offset = self.get_pointer_width().pointer_from_ne_bytes(&copy);
         }
 
-        offset += offsets[noffsets - 1];
+        offset = offset.wrapping_add(offsets[noffsets - 1]);
         Ok(offset)
     }
 
