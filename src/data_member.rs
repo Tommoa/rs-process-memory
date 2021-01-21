@@ -81,6 +81,7 @@ impl<T: Sized + Copy> DataMember<T> {
     /// [`ProcessHandle`]: type.ProcessHandle.html
     /// [`Pid`]: type.Pid.htm
     #[must_use]
+    #[allow(clippy::cast_sign_loss)]
     pub fn new_offset_relative(handle: ProcessHandle, offsets: Vec<isize>) -> Self {
         Self {
             // Yes, we are casting to usize. This will not touch any bits, but due to 2s complement,
@@ -123,6 +124,8 @@ impl<T: Sized + Copy> DataMember<T> {
     /// [`ProcessHandle`]: type.ProcessHandle.html
     /// [`Pid`]: type.Pid.html
     #[must_use]
+    #[allow(clippy::doc_markdown)]
+    #[allow(clippy::cast_sign_loss)]
     pub fn new_addr_offset(handle: ProcessHandle, addr: usize, offsets: Vec<isize>) -> Self {
         let mut vec = vec![addr];
         // Yes, we are casting to usize. This will not touch any bits, and due to 2s complement,
@@ -140,6 +143,7 @@ impl<T: Sized + Copy> DataMember<T> {
     /// for chasing down more pointers.
     /// Since the pointed-to data type might have changed, this function is generic. It is your
     /// responsibility to make sure you know what you point to.
+    #[allow(clippy::cast_sign_loss)]
     #[must_use]
     pub fn extend<TNew>(&self, more_offsets: Vec<isize>) -> DataMember<TNew> {
         let mut clone = DataMember {
@@ -149,13 +153,17 @@ impl<T: Sized + Copy> DataMember<T> {
         };
         // Yes, we are casting to usize. This will not touch any bits, and due to 2s complement,
         // we still get the correct result when adding offsets.
-        clone.offsets.extend(more_offsets.into_iter().map(|x| x as usize));
+        clone
+            .offsets
+            .extend(more_offsets.into_iter().map(|x| x as usize));
         clone
     }
 
     /// Creates a new `DataMember`, based on self, by shifting the last offset by a number of
     /// bytes. Does not append new offsets. This is useful if you have a pointer to a struct
     /// and want to address different fields, or access elements in an array.
+    #[allow(clippy::cast_sign_loss)]
+    #[must_use]
     pub fn shift<TNew>(&self, n_bytes: isize) -> DataMember<TNew> {
         let mut clone = DataMember {
             offsets: self.offsets.clone(),
@@ -271,14 +279,13 @@ mod test {
             .unwrap();
 
         // point to `game`, then our data is +4 from the base of `game`.
-        let garbage2 =
-            DataMember::<u32>::new_addr(handle, &game as *const _ as usize + 4);
+        let garbage2 = DataMember::<u32>::new_addr(handle, &game as *const _ as usize + 4);
         assert_eq!(1337, garbage2.read().unwrap());
 
         let garbage1 = garbage2.shift(-4);
         assert_eq!(42u32, garbage1.read().unwrap());
 
-        // At `game + 2*sizeof(u32) + 1*sizeof(Player*) is where we find 
+        // At `game + 2*sizeof(u32) + 1*sizeof(Player*) is where we find
         // a pointer to the second player.
         // So second_player.read() right now would just get you the pointer to the player.
         let second_player = DataMember::<*mut Player>::new_addr(
