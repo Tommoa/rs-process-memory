@@ -247,15 +247,9 @@ mod tests {
     #[test]
     fn module_info() {
         let pid = std::process::id() as Pid;
-        let base = pid
-            .libs_iter()
-            .unwrap()
-            .iter()
-            .find(|lib| lib.name == "ntdll.dll")
-            .unwrap()
-            .base;
+        let base = pid.get_library_base("ntdll.dll").unwrap();
         assert_ne!(0, base);
-        println!("ntdll.exe address: 0x{:X}", base);
+        println!("ntdll.dll address: 0x{:X}", base);
 
         match pid
             .libs_iter()
