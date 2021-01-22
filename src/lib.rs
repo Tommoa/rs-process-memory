@@ -305,6 +305,7 @@ pub struct ProcessInfo {
     pub name: String,
 }
 
+#[cfg(windows)]
 pub use platform::processes_iter;
 
 /// A minimal amount of information about a library inside another process.
