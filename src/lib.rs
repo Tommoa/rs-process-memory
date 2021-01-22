@@ -194,6 +194,8 @@ pub trait ProcessHandleExt {
 pub trait GetLibraryInfo {
     /// Lists all loaded libraries in a given process.
     /// You can then use the address in [`set_offset`] for example.
+    /// On Windows, libraries are also called "modules", and usually end in `*.dll`.
+    /// On Linux and macOS, libraries are also called "shared library", and usually end in `*.so`.
     ///
     /// # Errors
     /// Returns OS Error when something else went wrong.
@@ -284,7 +286,9 @@ pub struct ProcessInfo {
 
 pub use platform::processes_iter;
 
-/// A minimal amount of information about a library (also called module, DLL,...) inside another process.
+/// A minimal amount of information about a library inside another process.
+/// On Windows, libraries are also called "modules", and usually end in `*.dll`.
+/// On Linux and macOS, libraries are also called "shared library", and usually end in `*.so`.
 #[derive(Debug)]
 pub struct LibraryInfo {
     /// Name of the library.
