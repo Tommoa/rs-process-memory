@@ -59,7 +59,7 @@ impl TryIntoProcessHandle for Child {
     }
 }
 
-/// A `ProcessInfo` has a pid (=u32, =minwindef::DWORD), which can be turned into a Processhandle.
+/// A `ProcessInfo` has a pid (= `u32`, = `minwindef::DWORD`), which can be turned into a `ProcessHandle`.
 impl TryIntoProcessHandle for ProcessInfo {
     fn try_into_process_handle(&self) -> std::io::Result<ProcessHandle> {
         self.pid.try_into_process_handle()
@@ -249,8 +249,6 @@ fn utf8_to_string(bytes: &[i8]) -> String {
 
 #[cfg(test)]
 mod tests {
-    use winapi::um::handleapi::INVALID_HANDLE_VALUE;
-
     use super::*;
 
     #[test]
@@ -286,16 +284,5 @@ mod tests {
             Some(_) => panic!(),
             None => {}
         }
-    }
-
-    #[test]
-    fn processinfo_handle() {
-        let proc = processes_iter()
-            .unwrap()
-            .find(|p| p.name == "svchost.exe")
-            .unwrap();
-
-        let handle = proc.try_into_process_handle().unwrap();
-        assert!(handle.check_handle());
     }
 }
