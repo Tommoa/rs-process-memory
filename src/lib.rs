@@ -191,19 +191,16 @@ pub trait ProcessHandleExt {
 }
 
 /// Handling modules (e.g. DLLs) in a process.
-pub trait LibraryInfo {
-    /// Gets the base address of a module in a process. For example, "GameAssembly.dll" when on Windows.
-    /// You can then use the address in the `base` parameter of [`set_offset`] for example.
+pub trait GetLibraryInfo {
+    /// Lists all loaded libraries in a given process.
+    /// You can then use the address in [`set_offset`] for example.
     ///
     /// # Errors
-    /// Returns `std::io::ErrorKind::NotFound` when no such module name exists.
     /// Returns OS Error when something else went wrong.
-    ///
-    /// # Panics
-    /// Panics when closing the handle fails (e.g. double close).
+    /// Returns other error when closing the handle fails.
     ///
     /// [`set_offset`]: trait.Memory.html#tymethod.set_offset
-    fn get_library_base(&self, name: &str) -> std::io::Result<usize>;
+    fn libs_iter(&self) -> std::io::Result<Vec<LibraryInfo>>;
 }
 
 /// A trait that refers to and allows writing to a region of memory in a running program.
@@ -278,7 +275,7 @@ where
 
 /// A minimal amount of information about a system process.
 #[derive(Debug)]
-pub struct Process {
+pub struct ProcessInfo {
     /// Process ID of this process.
     pub pid: Pid,
     /// Name of this process. For example "MyGame.exe" on Windows.
@@ -286,3 +283,12 @@ pub struct Process {
 }
 
 pub use platform::processes_iter;
+
+/// A minimal amount of information about a library (also called module, DLL,...) inside another process.
+#[derive(Debug)]
+pub struct LibraryInfo {
+    /// Name of the library.
+    pub name: String,
+    /// Base address of the module in the remote process.
+    pub base: usize,
+}
