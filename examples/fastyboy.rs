@@ -78,8 +78,12 @@ fn main() -> std::io::Result<()> {
     level_warmup.write(&1.0)?;
     emitters_enabled.write(&false)?;
 
-    println!("Spawn timer: {}", spawn_timer.read()?);
-    println!("Level warmup: {}", level_warmup.read()?);
-    println!("Emitters enabled: {}", emitters_enabled.read()?);
+    unsafe {
+        // safety: These are known to be the correct addresses for these types in
+        // 'MirrorsEdgeCatalyst.exe'
+        println!("Spawn timer: {}", spawn_timer.read()?);
+        println!("Level warmup: {}", level_warmup.read()?);
+        println!("Emitters enabled: {}", emitters_enabled.read()?);
+    }
     Ok(())
 }

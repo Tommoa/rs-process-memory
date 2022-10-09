@@ -14,7 +14,7 @@ use crate::Memory;
 /// // The memory refered to is now the same
 /// assert_eq!(&x as *const _ as usize, member.get_offset().unwrap());
 /// // The value of the member is the same as the variable
-/// assert_eq!(x, member.read().unwrap());
+/// assert_eq!(x, unsafe { member.read().unwrap() });
 /// // We can write to and modify the value of the variable using the member
 /// member.write(&6u32).unwrap();
 /// assert_eq!(x, 6u32);
@@ -93,11 +93,11 @@ impl<T: Sized + Copy> Memory<T> for LocalMember<T> {
 
     /// This will only return a error if one of the offsets gives a null pointer. or give a
     /// non-aligned read
-    fn read(&self) -> std::io::Result<T> {
+    unsafe fn read(&self) -> std::io::Result<T> {
         let offset = self.get_offset()? as *const T;
         // Read the value of the pointer. We can't guarantee alignment, so this
         // is `read_unaligned()` instead of `read()`
-        let x: T = unsafe { offset.read_unaligned() };
+        let x: T = offset.read_unaligned();
         Ok(x)
     }
 
@@ -121,7 +121,10 @@ mod test {
         let test = 4_i32;
         let mut member = LocalMember::<i32>::new();
         member.set_offset(vec![&test as *const _ as usize]);
-        assert_eq!(test, member.read().unwrap());
+        unsafe {
+            // safety: the memory being pointed to is known to be a valid i32 as we control it
+            assert_eq!(test, member.read().unwrap());
+        }
         member.write(&5_i32).unwrap();
         assert_eq!(test, 5_i32);
     }
@@ -130,7 +133,10 @@ mod test {
         let test = 3_i64;
         let mut member = LocalMember::<i64>::new();
         member.set_offset(vec![&test as *const _ as usize]);
-        assert_eq!(test, member.read().unwrap());
+        unsafe {
+            // safety: the memory being pointed to is known to be a valid i64 as we control it
+            assert_eq!(test, member.read().unwrap());
+        }
         member.write(&-1_i64).unwrap();
         assert_eq!(test, -1);
     }
@@ -139,7 +145,10 @@ mod test {
         let test = 0_usize;
         let mut member = LocalMember::<usize>::new();
         member.set_offset(vec![&test as *const _ as usize]);
-        assert_eq!(test, member.read().unwrap());
+        unsafe {
+            // safety: the memory being pointed to is known to be a valid usize as we control it
+            assert_eq!(test, member.read().unwrap());
+        }
         member.write(&0xffff).unwrap();
         assert_eq!(test, 0xffff);
     }

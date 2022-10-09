@@ -21,8 +21,8 @@
 //!     member.get_offset().unwrap());
 //! assert_eq!(&x as *const _ as usize, member.get_offset().unwrap());
 //! // The value of the member is the same as the variable
-//! println!("Member value: {}", member.read().unwrap());
-//! assert_eq!(x, member.read().unwrap());
+//! println!("Member value: {}", unsafe { member.read().unwrap() });
+//! assert_eq!(x, unsafe { member.read().unwrap() });
 //! // We can write to and modify the value of the variable using the member
 //! member.write(&6_u32).unwrap();
 //! println!("New x-value: {}", x);
@@ -41,8 +41,8 @@
 //!     member.get_offset().unwrap());
 //! assert_eq!(&x as *const _ as usize, member.get_offset().unwrap());
 //! // The value of the member is the same as the variable
-//! println!("Member value: {}", member.read().unwrap());
-//! assert_eq!(x, member.read().unwrap());
+//! println!("Member value: {}", unsafe { member.read().unwrap() });
+//! assert_eq!(x, unsafe { member.read().unwrap() });
 //! // We can write to and modify the value of the variable using the member
 //! member.write(&6_u32).unwrap();
 //! println!("New x-value: {}", x);
@@ -62,7 +62,7 @@
 //! // The memory offset can now be correctly calculated:
 //! println!("Target memory location: {}", member.get_offset().unwrap());
 //! // The memory offset can now be used to retrieve and modify values:
-//! println!("Current value: {}", member.read().unwrap());
+//! println!("Current value: {}", unsafe { member.read().unwrap() });
 //! member.write(&123_u32).unwrap();
 //! ```
 #![deny(missing_docs)]
@@ -215,16 +215,24 @@ pub trait Memory<T> {
 
     /// Reads the value of the pointer from the offsets given by [`Memory::set_offset`].
     ///
-    /// This function is safe because it should never internally allow for a null pointer
-    /// deference, and instead should return a `std::io::Error` with a `std::io::ErrorKind` of
-    /// `Other`.
+    /// This function should never internally allow for a null pointer deference, and instead
+    /// should return a `std::io::Error` with a `std::io::ErrorKind` of `Other`.
+    ///
+    /// # Safety
+    /// This function is marked as unsafe as it may cause undefined behavior.
+    ///
+    /// The function will attempt to read a `T` from uncontrolled memory, and so may produce an
+    /// invalid value (e.g. a value of `2` for a `bool`, which is [undefined]. The caller _must_
+    /// ensure that the data being read is valid for a `T`, or should get an equivalent integer
+    /// representation and check the bit pattern themselves.
     ///
     /// # Errors
     /// Returns an error if copying memory fails or if a null pointer dereference would
     /// otherwise occur.
     ///
     /// [`Memory::set_offset`]: trait.Memory.html#tymethod.set_offset
-    fn read(&self) -> std::io::Result<T>;
+    /// [undefined]: https://doc.rust-lang.org/reference/behavior-considered-undefined.html
+    unsafe fn read(&self) -> std::io::Result<T>;
 
     /// Writes `value` to the pointer from the offsets given by [`Memory::set_offset`].
     ///
