@@ -1,70 +1,4 @@
-//! This crate provides tools for working with the raw memory of programs.
-//!
-//! Some examples of use cases for this tool are:
-//!  - Remote debugging tools
-//!  - Game "trainers"
-//!  - Rust clones of Cheat Engine
-//!
-//! ## Examples
-//! ```rust
-//! # use process_memory::{Memory, DataMember, Pid, TryIntoProcessHandle};
-//! // We have a variable with some value
-//! let x = 4_u32;
-//! println!("Original x-value: {}", x);
-//!
-//! // We need to make sure that we get a handle to a process, in this case, ourselves
-//! let handle = (std::process::id() as Pid).try_into_process_handle().unwrap();
-//! // We make a `DataMember` that has an offset referring to its location in memory
-//! let member = DataMember::new_offset(handle, vec![&x as *const _ as usize]);
-//! // The memory refered to is now the same
-//! println!("Memory location: &x: {}, member: {}", &x as *const _ as usize,
-//!     member.get_offset().unwrap());
-//! assert_eq!(&x as *const _ as usize, member.get_offset().unwrap());
-//! // The value of the member is the same as the variable
-//! println!("Member value: {}", unsafe { member.read().unwrap() });
-//! assert_eq!(x, unsafe { member.read().unwrap() });
-//! // We can write to and modify the value of the variable using the member
-//! member.write(&6_u32).unwrap();
-//! println!("New x-value: {}", x);
-//! assert_eq!(x, 6_u32);
-//! ```
-//! ```rust
-//! # use process_memory::{Memory, LocalMember};
-//! // We have a variable with some value
-//! let x = 4_u32;
-//! println!("Original x-value: {}", x);
-//!
-//! // We make a `LocalMember` that has an offset referring to its location in memory
-//! let member = LocalMember::new_offset(vec![&x as *const _ as usize]);
-//! // The memory refered to is now the same
-//! println!("Memory location: &x: {}, member: {}", &x as *const _ as usize,
-//!     member.get_offset().unwrap());
-//! assert_eq!(&x as *const _ as usize, member.get_offset().unwrap());
-//! // The value of the member is the same as the variable
-//! println!("Member value: {}", unsafe { member.read().unwrap() });
-//! assert_eq!(x, unsafe { member.read().unwrap() });
-//! // We can write to and modify the value of the variable using the member
-//! member.write(&6_u32).unwrap();
-//! println!("New x-value: {}", x);
-//! assert_eq!(x, 6_u32);
-//! ```
-//! ```no_run
-//! # use process_memory::{Architecture, Memory, DataMember, Pid, ProcessHandleExt, TryIntoProcessHandle};
-//! # fn get_pid(process_name: &str) -> Pid {
-//! #     std::process::id() as Pid
-//! # }
-//! // We get a handle for a target process with a different architecture to ourselves
-//! let handle = get_pid("32Bit.exe").try_into_process_handle().unwrap()
-//!     .set_arch(Architecture::Arch32Bit);
-//! // We make a `DataMember` that has a series of offsets refering to a known value in
-//! // the target processes memory
-//! let member = DataMember::new_offset(handle, vec![0x01_02_03_04, 0x04, 0x08, 0x10]);
-//! // The memory offset can now be correctly calculated:
-//! println!("Target memory location: {}", member.get_offset().unwrap());
-//! // The memory offset can now be used to retrieve and modify values:
-//! println!("Current value: {}", unsafe { member.read().unwrap() });
-//! member.write(&123_u32).unwrap();
-//! ```
+#![doc = include_str!("../README.md")]
 #![deny(missing_docs)]
 #![deny(unused_results)]
 #![deny(unreachable_pub)]
@@ -109,6 +43,9 @@ pub trait CopyAddress {
     ///
     /// # Errors
     /// `std::io::Error` if an error occurs copying the address.
+    ///
+    /// [`copy_address`]: #tymethod.copy_address
+    /// [`get_pointer_width`]: #tymethod.get_pointer_width
     fn get_offset(&self, offsets: &[usize]) -> std::io::Result<usize> {
         // Look ma! No unsafes!
         let mut offset: usize = 0;
@@ -131,6 +68,8 @@ pub trait CopyAddress {
     /// Any implementation of this function should be marked with
     /// `#[inline(always)]` as this function is *very* commonly called and
     /// should be inlined.
+    ///
+    /// [`get_offset`]: #method.get_offset
     fn get_pointer_width(&self) -> Architecture;
 }
 
@@ -180,9 +119,9 @@ impl TryIntoProcessHandle for ProcessHandle {
 
 /// Additional functions on process handles
 pub trait ProcessHandleExt {
-    /// Returns `true` if the `ProcessHandle` is not null, and `false` otherwise.
+    /// Returns `true` if the [`ProcessHandle`] is not null, and `false` otherwise.
     fn check_handle(&self) -> bool;
-    /// Return the null equivalent of a `ProcessHandle`.
+    /// Return the null equivalent of a [`ProcessHandle`].
     #[must_use]
     fn null_type() -> ProcessHandle;
     /// Set this handle to use some architecture
@@ -253,7 +192,7 @@ pub trait Memory<T> {
 
 /// Copy `length` bytes of memory at `addr` from `source`.
 ///
-/// This is just a convenient way to call `CopyAddress::copy_address` without
+/// This is just a convenient way to call [`CopyAddress::copy_address`] without
 /// having to provide your own buffer.
 ///
 /// # Errors

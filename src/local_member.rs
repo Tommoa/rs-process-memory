@@ -32,6 +32,8 @@ use crate::Memory;
 /// The implemented functions try to stop you from shooting yourself in the foot by checking none
 /// of the pointers end up at the null pointer, but this does not guarantee that you won't be able
 /// to mess something up really badly in your program.
+///
+/// [`DataMember`]: struct.DataMember.html
 #[derive(Clone, Debug, Default)]
 pub struct LocalMember<T> {
     offsets: Vec<usize>,
