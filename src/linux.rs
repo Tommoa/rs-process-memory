@@ -46,7 +46,7 @@ impl CopyAddress for ProcessHandle {
 
     fn copy_address(&self, addr: usize, buf: &mut [u8]) -> std::io::Result<()> {
         let local_iov = iovec {
-            iov_base: buf.as_mut_ptr() as *mut c_void,
+            iov_base: buf.as_mut_ptr().cast::<c_void>(),
             iov_len: buf.len(),
         };
         let remote_iov = iovec {

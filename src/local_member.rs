@@ -120,7 +120,7 @@ mod test {
     fn modify_local_i32() {
         let test = 4_i32;
         let mut member = LocalMember::<i32>::new();
-        member.set_offset(vec![&test as *const _ as usize]);
+        member.set_offset(vec![std::ptr::addr_of!(test) as usize]);
         unsafe {
             // safety: the memory being pointed to is known to be a valid i32 as we control it
             assert_eq!(test, member.read().unwrap());
@@ -132,7 +132,7 @@ mod test {
     fn modify_local_i64() {
         let test = 3_i64;
         let mut member = LocalMember::<i64>::new();
-        member.set_offset(vec![&test as *const _ as usize]);
+        member.set_offset(vec![std::ptr::addr_of!(test) as usize]);
         unsafe {
             // safety: the memory being pointed to is known to be a valid i64 as we control it
             assert_eq!(test, member.read().unwrap());
@@ -144,7 +144,7 @@ mod test {
     fn modify_local_usize() {
         let test = 0_usize;
         let mut member = LocalMember::<usize>::new();
-        member.set_offset(vec![&test as *const _ as usize]);
+        member.set_offset(vec![std::ptr::addr_of!(test) as usize]);
         unsafe {
             // safety: the memory being pointed to is known to be a valid usize as we control it
             assert_eq!(test, member.read().unwrap());

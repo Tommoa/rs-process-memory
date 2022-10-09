@@ -51,7 +51,7 @@ impl TryIntoProcessHandle for minwindef::DWORD {
 /// A `std::process::Child` has a `HANDLE` from calling `CreateProcess`.
 impl TryIntoProcessHandle for Child {
     fn try_into_process_handle(&self) -> std::io::Result<ProcessHandle> {
-        Ok((self.as_raw_handle() as _, Architecture::from_native()))
+        Ok((self.as_raw_handle().cast(), Architecture::from_native()))
     }
 }
 
@@ -63,6 +63,7 @@ impl CopyAddress for ProcessHandle {
         self.1
     }
 
+    #[allow(clippy::ptr_as_ptr)]
     fn copy_address(&self, addr: usize, buf: &mut [u8]) -> std::io::Result<()> {
         if buf.is_empty() {
             return Ok(());
@@ -87,6 +88,7 @@ impl CopyAddress for ProcessHandle {
 
 /// Use `WriteProcessMemory` to write memory from another process on Windows.
 impl PutAddress for ProcessHandle {
+    #[allow(clippy::ptr_as_ptr)]
     fn put_address(&self, addr: usize, buf: &[u8]) -> std::io::Result<()> {
         if buf.is_empty() {
             return Ok(());

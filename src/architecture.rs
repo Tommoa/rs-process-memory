@@ -54,6 +54,10 @@ impl Architecture {
 
     /// Convert bytes read from memory into a pointer in the
     /// current architecture.
+    ///
+    /// # Panics
+    /// If there are not enough bytes in the slice to make an integer of the sized indicated by
+    /// `self`.
     #[must_use]
     pub fn pointer_from_ne_bytes(self, bytes: &[u8]) -> usize {
         match self {

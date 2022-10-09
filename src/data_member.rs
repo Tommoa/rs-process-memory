@@ -89,15 +89,16 @@ impl<T: Sized + Copy> Memory<T> for DataMember<T> {
         // It will be freed at the end of the function because no references are held to it.
         let mut buffer = vec![0_u8; std::mem::size_of::<T>()];
         self.process.copy_address(offset, &mut buffer)?;
-        Ok((buffer.as_ptr() as *const T).read_unaligned())
+        Ok(buffer.as_ptr().cast::<T>().read_unaligned())
     }
 
     fn write(&self, value: &T) -> std::io::Result<()> {
         use std::slice;
         let offset = self.process.get_offset(&self.offsets)?;
-        let buffer: &[u8] =
-            unsafe { slice::from_raw_parts(value as *const _ as _, std::mem::size_of::<T>()) };
-        self.process.put_address(offset, &buffer)
+        let buffer: &[u8] = unsafe {
+            slice::from_raw_parts((value as *const T).cast::<u8>(), std::mem::size_of::<T>())
+        };
+        self.process.put_address(offset, buffer)
     }
 }
 
@@ -114,7 +115,7 @@ mod test {
             .unwrap();
         println!("Process Handle: {:?}", handle);
         let mut member = DataMember::<i32>::new(handle);
-        member.set_offset(vec![&test as *const _ as usize]);
+        member.set_offset(vec![std::ptr::addr_of!(test) as usize]);
         unsafe {
             // safety: the memory being pointed to is known to be a valid i32 as we control it
             assert_eq!(test, member.read().unwrap());
@@ -131,7 +132,7 @@ mod test {
             .unwrap();
         println!("Process Handle: {:?}", handle);
         let mut member = DataMember::<i64>::new(handle);
-        member.set_offset(vec![&test as *const _ as usize]);
+        member.set_offset(vec![std::ptr::addr_of!(test) as usize]);
         unsafe {
             // safety: the memory being pointed to is known to be a valid i64 as we control it
             assert_eq!(test, member.read().unwrap());
@@ -148,7 +149,7 @@ mod test {
             .unwrap();
         println!("Process Handle: {:?}", handle);
         let mut member = DataMember::<usize>::new(handle);
-        member.set_offset(vec![&test as *const _ as usize]);
+        member.set_offset(vec![std::ptr::addr_of!(test) as usize]);
         unsafe {
             // safety: the memory being pointed to is known to be a valid usize as we control it
             assert_eq!(test, member.read().unwrap());
