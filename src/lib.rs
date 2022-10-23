@@ -129,6 +129,42 @@ pub trait ProcessHandleExt {
     fn set_arch(self, arch: Architecture) -> Self;
 }
 
+/// Getting some information (such as base address) of loaded libraries in a process.
+pub trait GetLibraryInfo {
+    /// Lists all loaded libraries in a given process.
+    /// You can then use the address in [`set_offset`] for example.
+    /// On Windows, libraries are also called "modules", and usually end in `*.dll`.
+    /// On Linux and macOS, libraries are also called "shared library", and usually end in `*.so`.
+    ///
+    /// # Errors
+    /// Returns OS Error when something else went wrong.
+    /// Returns other error when closing the handle fails.
+    ///
+    /// [`set_offset`]: trait.Memory.html#tymethod.set_offset
+    fn libs_iter(&self) -> std::io::Result<Vec<LibraryInfo>>;
+
+    /// Finds the base address of a loaded library in a process.
+    /// You can then use the address in [`set_offset`] for example.
+    /// On Windows, libraries are also called "modules", and usually end in `*.dll`.
+    /// On Linux and macOS, libraries are also called "shared library", and usually end in `*.so`.
+    ///
+    /// # Errors
+    /// Returns OS Error when something else went wrong.
+    /// Returns other error when closing the handle fails.
+    /// Returns a `NotFound` when no such library is loaded.
+    ///
+    /// [`set_offset`]: trait.Memory.html#tymethod.set_offset
+    fn get_library_base(&self, name: &str) -> std::io::Result<usize> {
+        match self.libs_iter()?.iter().find(|p| p.name == name) {
+            None => Err(std::io::Error::new(
+                std::io::ErrorKind::NotFound,
+                format!("Count not find base address of library \"{}\"", name),
+            )),
+            Some(lib) => Ok(lib.base),
+        }
+    }
+}
+
 /// A trait that refers to and allows writing to a region of memory in a running program.
 pub trait Memory<T> {
     /// Set the offsets to the location in memory. This is used for things such as multi-level
@@ -205,4 +241,27 @@ where
 
     source.copy_address(addr, &mut copy)?;
     Ok(copy)
+}
+
+/// A minimal amount of information about a system process.
+#[derive(Debug)]
+pub struct ProcessInfo {
+    /// Process ID of this process.
+    pub pid: Pid,
+    /// Name of this process. For example "MyGame.exe" on Windows.
+    pub name: String,
+}
+
+#[cfg(windows)]
+pub use platform::processes_iter;
+
+/// A minimal amount of information about a library inside another process.
+/// On Windows, libraries are also called "modules", and usually end in `*.dll`.
+/// On Linux and macOS, libraries are also called "shared library", and usually end in `*.so`.
+#[derive(Debug)]
+pub struct LibraryInfo {
+    /// Name of the library.
+    pub name: String,
+    /// Base address of the module in the remote process.
+    pub base: usize,
 }
