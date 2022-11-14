@@ -12,8 +12,11 @@ edition = "2018"
 name = "fastyboy"
 crate-type = ["bin"]
 
+# Feature needed in the fastyboy example to get the pid of a process by name
 [target.'cfg(windows)'.dev-dependencies]
-winapi = { version = "0.3", features = ["tlhelp32"] }
+windows = { version = "0.43.0", features = [
+    "Win32_System_Diagnostics_ToolHelp",
+] }
 
 [dependencies]
 libc = "0.2"
@@ -22,4 +25,8 @@ libc = "0.2"
 mach = "0.3"
 
 [target.'cfg(windows)'.dependencies]
-winapi = { version = "0.3", features = ["winnt", "memoryapi", "minwindef", "processthreadsapi"] }
+windows = { version = "0.43.0", features = [
+    "Win32_Foundation",
+    "Win32_System_Threading",
+    "Win32_System_Diagnostics_Debug",
+] }
