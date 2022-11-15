@@ -5,7 +5,7 @@
 //! "level warmup time" to 1 second (also down from a default of 10 seconds) and disables emitters.
 //! These modifications should make the time taken to load a level in Mirror's Edge Catalyst
 //! significantly shorter.
-
+#[cfg(windows)]
 mod windows {
     pub(crate) use windows::Win32::{
         Foundation::{CHAR, MAX_PATH},
@@ -46,7 +46,8 @@ pub fn get_pid(process_name: &str) -> process_memory::Pid {
         szExeFile: [windows::CHAR(0); windows::MAX_PATH as usize],
     };
     unsafe {
-        // On Error return 0 as the pid. Maybe this function should instead return itself a Result to indicate if a pid has been found?
+        // On Error return 0 as the pid. Maybe this function should instead return itself a Result
+        // to indicate if a pid has been found?
         let snapshot = if let Ok(snapshot) =
             windows::CreateToolhelp32Snapshot(windows::TH32CS_SNAPPROCESS, 0)
         {

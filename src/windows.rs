@@ -1,8 +1,7 @@
+use core::ffi::c_void;
 use std::os::windows::io::AsRawHandle;
 use std::process::Child;
-
 mod windows {
-    use core::ffi::c_void;
     pub(crate) use windows::Win32::{
         Foundation::HANDLE,
         System::{
@@ -13,16 +12,12 @@ mod windows {
             },
         },
     };
-
-    pub(crate) type DWORD = u32;
-    pub(crate) type LPCVOID = *const c_void;
-    pub(crate) type LPVOID = *mut c_void;
 }
 
 use super::{Architecture, CopyAddress, ProcessHandleExt, PutAddress, TryIntoProcessHandle};
 
-/// On Windows a `Pid` is a `DWORD`.
-pub type Pid = windows::DWORD;
+/// On Windows a `Pid` is a unsigned 32-bit integer.
+pub type Pid = u32;
 /// On Windows a `ProcessHandle` is a `HANDLE`.
 pub type ProcessHandle = (windows::HANDLE, Architecture);
 
@@ -42,7 +37,7 @@ impl ProcessHandleExt for ProcessHandle {
 }
 
 /// A `Pid` can be turned into a `ProcessHandle` with `OpenProcess`.
-impl TryIntoProcessHandle for windows::DWORD {
+impl TryIntoProcessHandle for Pid {
     fn try_into_process_handle(&self) -> std::io::Result<ProcessHandle> {
         Ok((
             unsafe {
@@ -65,7 +60,7 @@ impl TryIntoProcessHandle for windows::DWORD {
 impl TryIntoProcessHandle for Child {
     fn try_into_process_handle(&self) -> std::io::Result<ProcessHandle> {
         Ok((
-            windows::HANDLE(self.as_raw_handle() as _),
+            windows::HANDLE(self.as_raw_handle() as isize),
             Architecture::from_native(),
         ))
     }
@@ -88,8 +83,8 @@ impl CopyAddress for ProcessHandle {
         if unsafe {
             windows::ReadProcessMemory(
                 self.0,
-                addr as windows::LPVOID,
-                buf.as_mut_ptr() as windows::LPVOID,
+                addr as *const c_void,
+                buf.as_mut_ptr() as *mut c_void,
                 buf.len(),
                 None,
             )
@@ -112,8 +107,8 @@ impl PutAddress for ProcessHandle {
         if unsafe {
             windows::WriteProcessMemory(
                 self.0,
-                addr as windows::LPVOID,
-                buf.as_ptr() as windows::LPCVOID,
+                addr as *const c_void,
+                buf.as_ptr().cast(),
                 buf.len(),
                 None,
             )
