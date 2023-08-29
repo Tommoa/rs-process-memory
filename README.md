@@ -17,61 +17,72 @@ Some examples of use cases for this tool are:
 
 ## Examples
 ```rust
+// We need the following from process-memory
 # use process_memory::{Memory, DataMember, Pid, TryIntoProcessHandle};
+
 // We have a variable with some value
 let x = 4_u32;
-println!("Original x-value: {}", x);
 
-// We need to make sure that we get a handle to a process, in this case, ourselves
-let handle = (std::process::id() as Pid).try_into_process_handle().unwrap();
-// We make a `DataMember` that has an offset referring to its location in memory
+
+// We need to make sure that we get a handle to a process
+// that we want to read from, in this case, ourselves
+let handle = ( std::process::id() as Pid ).try_into_process_handle().unwrap();
+
+// We make a `DataMember` that has an offset referring to the location
+// of our variable x in memory
 let member = DataMember::new_offset(handle, vec![&x as *const _ as usize]);
-// The memory refered to is now the same
-println!("Memory location: &x: {}, member: {}", &x as *const _ as usize,
-    member.get_offset().unwrap());
+
+// Variable member and x now refer to the same memory
 assert_eq!(&x as *const _ as usize, member.get_offset().unwrap());
-// The value of the member is the same as the variable
-println!("Member value: {}", unsafe { member.read().unwrap() });
+
+// The value of member is the same as x
 assert_eq!(x, unsafe { member.read().unwrap() });
-// We can write to and modify the value of the variable using the member
+
+// We can write to and modify the value of x using member
 member.write(&6_u32).unwrap();
-println!("New x-value: {}", x);
 assert_eq!(x, 6_u32);
 ```
+
+
 ```rust
 # use process_memory::{Memory, LocalMember};
+
 // We have a variable with some value
 let x = 4_u32;
-println!("Original x-value: {}", x);
 
 // We make a `LocalMember` that has an offset referring to its location in memory
 let member = LocalMember::new_offset(vec![&x as *const _ as usize]);
+
 // The memory refered to is now the same
-println!("Memory location: &x: {}, member: {}", &x as *const _ as usize,
-    member.get_offset().unwrap());
 assert_eq!(&x as *const _ as usize, member.get_offset().unwrap());
+
 // The value of the member is the same as the variable
-println!("Member value: {}", unsafe { member.read().unwrap() });
 assert_eq!(x, unsafe { member.read().unwrap() });
+
 // We can write to and modify the value of the variable using the member
 member.write(&6_u32).unwrap();
-println!("New x-value: {}", x);
 assert_eq!(x, 6_u32);
 ```
+
 ```no_run
 # use process_memory::{Architecture, Memory, DataMember, Pid, ProcessHandleExt, TryIntoProcessHandle};
 # fn get_pid(process_name: &str) -> Pid {
 #     std::process::id() as Pid
 # }
+
 // We get a handle for a target process with a different architecture to ourselves
 let handle = get_pid("32Bit.exe").try_into_process_handle().unwrap()
     .set_arch(Architecture::Arch32Bit);
+
 // We make a `DataMember` that has a series of offsets refering to a known value in
 // the target processes memory
 let member = DataMember::new_offset(handle, vec![0x01_02_03_04, 0x04, 0x08, 0x10]);
+
 // The memory offset can now be correctly calculated:
-println!("Target memory location: {}", member.get_offset().unwrap());
+let targetMemoryLocation = member.get_offset().unwrap();
+
 // The memory offset can now be used to retrieve and modify values:
-println!("Current value: {}", unsafe { member.read().unwrap() });
+let currentValue = unsafe { member.read().unwrap() };
+
 member.write(&123_u32).unwrap();
 ```
